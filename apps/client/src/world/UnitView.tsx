@@ -4,6 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import { BUNKER_AT, unitProgress, type Front, type Unit } from "@ww/shared";
 import { onTool } from "../events.ts";
 import { anchors, unitAnchor } from "../overlay.ts";
+import { headingTo, lerpAngle, type Battle } from "./battle.ts";
 import { fx } from "./Fx.tsx";
 import { laneFor, roadS } from "./road.ts";
 import { toWorld, type Placement } from "./layout.ts";
@@ -14,6 +15,7 @@ interface Props {
   unit: Unit;
   front: Front;
   shape: IslandShape;
+  battle: Battle;
   /** Island placement in world space. */
   place: Placement;
   index: number;
@@ -26,13 +28,20 @@ interface Props {
 
 const BEACON = { working: "#ffd24a", waiting: "#ff5a3c" } as const;
 const BURST_MS = 1600;
+const rand = (a: number, b: number) => a + Math.random() * (b - a);
 
-/** A unit on its island's road: follows the terrain, faces the flag, fires while it works. */
-export function UnitView({ unit, front, shape, place, index, count, team, selected, reduced, onSelect }: Props) {
+/**
+ * A unit on its island's road. It holds its progress point when idle; while
+ * working it manoeuvres around that point, faces and fires at the nearest
+ * enemy, and every tool call it makes drops one.
+ */
+export function UnitView({ unit, front, shape, battle, place, index, count, team, selected, reduced, onSelect }: Props) {
   const group = useRef<THREE.Group>(null);
   const body = useRef<THREE.Group>(null);
   const beacon = useRef<THREE.Mesh>(null);
   const current = useRef<number | null>(null);
+  const wander = useRef({ s: 0, lane: 0, ts: 0, tl: 0, next: 0 });
+  const last = useRef({ x: 0, y: 0, z: 0 });
   const fireUntil = useRef(0);
   const nextShot = useRef(0);
   const anchor = useMemo(() => new THREE.Vector3(), []);
@@ -40,47 +49,100 @@ export function UnitView({ unit, front, shape, place, index, count, team, select
   const progress = unitProgress(unit, front);
   const lane = laneFor(index, count);
   const bunkerUp = front.tests.status === "failed";
+  const working = unit.status === "working";
 
   useEffect(() => {
     const key = unitAnchor(unit.id);
     anchors.set(key, anchor);
-    return () => void anchors.delete(key);
-  }, [unit.id, anchor]);
+    return () => {
+      anchors.delete(key);
+      battle.units.delete(unit.id);
+    };
+  }, [unit.id, anchor, battle]);
 
-  // Every tool call is a volley; starting work fires one too.
-  useEffect(() => onTool(unit.id, () => (fireUntil.current = performance.now() + BURST_MS)), [unit.id]);
+  /** Fires one tracer from the unit; returns the enemy it aimed at, if any. */
+  const fire = (aimed: boolean) => {
+    const me = last.current;
+    const enemy = battle.nearestEnemy(me.x, me.z);
+    const from = toWorld(place, me.x, me.z);
+    tmp.from.set(from.x, me.y + 0.9, from.z);
+    if (enemy) {
+      const spread = aimed ? 0.2 : 1.4;
+      const to = toWorld(place, enemy.x + rand(-spread, spread), enemy.z + rand(-spread, spread));
+      tmp.to.set(to.x, enemy.y + 0.5, to.z);
+    } else {
+      const s = (current.current === null ? 0 : roadS(current.current)) + rand(0.14, 0.2);
+      const q = shape.roadPoint(bunkerUp ? Math.min(s, roadS(BUNKER_AT)) : s, rand(-2, 2));
+      const to = toWorld(place, q.x, q.z);
+      tmp.to.set(to.x, q.y + (bunkerUp ? 0.6 : 0), to.z);
+    }
+    fx.shoot(tmp.from, tmp.to);
+    return enemy;
+  };
+
+  // Every tool call is a volley and one aimed shot that drops the nearest enemy.
+  useEffect(
+    () =>
+      onTool(unit.id, () => {
+        fireUntil.current = performance.now() + BURST_MS;
+        if (reduced) return;
+        const hit = fire(true);
+        if (hit) battle.kill(hit, performance.now() + 350);
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire reads refs only
+    [unit.id, battle, reduced],
+  );
   useEffect(() => {
-    if (unit.status === "working") fireUntil.current = performance.now() + BURST_MS;
-  }, [unit.status]);
+    if (working) fireUntil.current = performance.now() + BURST_MS;
+  }, [working]);
 
   useFrame(({ clock }, delta) => {
     const g = group.current;
     if (!g) return;
     const dt = Math.min(0.05, delta);
+    const now = performance.now();
+
     // New units march in from behind HQ.
     if (current.current === null) current.current = reduced ? progress : Math.max(-0.05, progress - 0.1);
     current.current += (progress - current.current) * Math.min(1, dt * (reduced ? 10 : 1.2));
-    const p = shape.roadPoint(roadS(current.current), lane);
+
+    // Manoeuvre around the progress point while fighting; fall back into formation otherwise.
+    const w = wander.current;
+    if (working && !reduced) {
+      if (now > w.next) {
+        w.ts = rand(-0.035, 0.035);
+        w.tl = rand(-1.8, 1.8);
+        w.next = now + rand(1100, 2600);
+      }
+    } else {
+      w.ts = 0;
+      w.tl = 0;
+    }
+    const k = reduced ? 1 : Math.min(1, dt * 1.3);
+    w.s += (w.ts - w.s) * k;
+    w.lane += (w.tl - w.lane) * k;
+
+    let s = roadS(current.current) + w.s;
+    if (bunkerUp) s = Math.min(s, roadS(BUNKER_AT) - 0.04);
+    const p = shape.roadPoint(s, Math.max(-3.2, Math.min(3.2, lane + w.lane)));
     g.position.set(p.x, p.y, p.z);
-    g.rotation.y = p.rot;
+
+    const enemy = working ? battle.nearestEnemy(p.x, p.z) : null;
+    const face = enemy ? headingTo(enemy.x - p.x, enemy.z - p.z) : p.rot;
+    g.rotation.y = reduced ? face : lerpAngle(g.rotation.y, face, Math.min(1, dt * 4));
+    last.current = { x: p.x, y: p.y, z: p.z };
+    battle.units.set(unit.id, { x: p.x, y: p.y, z: p.z, s, working });
 
     const t = clock.elapsedTime;
-    if (body.current) body.current.position.y = unit.status === "working" && !reduced ? Math.sin(t * 11) * 0.04 : 0;
+    if (body.current) body.current.position.y = working && !reduced ? Math.abs(Math.sin(t * 9 + index)) * 0.05 : 0;
     if (beacon.current) beacon.current.scale.setScalar(reduced ? 1 : 1 + Math.sin(t * 5.5) * 0.25);
-    const w = toWorld(place, p.x, p.z);
-    anchor.set(w.x, p.y + 2.4, w.z);
+    const wp = toWorld(place, p.x, p.z);
+    anchor.set(wp.x, p.y + 2.4, wp.z);
 
-    const now = performance.now();
-    if (!reduced && now < fireUntil.current && now > nextShot.current) {
-      nextShot.current = now + 280 + Math.random() * 200;
-      tmp.from.set(w.x, p.y + 0.9, w.z);
-      const nearBunker = bunkerUp && current.current > BUNKER_AT - 0.2;
-      const q = nearBunker
-        ? shape.roadPoint(roadS(BUNKER_AT), (Math.random() - 0.5) * 1.5)
-        : shape.roadPoint(roadS(current.current) + 0.14 + Math.random() * 0.06, (Math.random() - 0.5) * 4);
-      const wq = toWorld(place, q.x, q.z);
-      tmp.to.set(wq.x, q.y + (nearBunker ? 0.6 : 0), wq.z);
-      fx.shoot(tmp.from, tmp.to);
+    if (!reduced && working && now > nextShot.current && (now < fireUntil.current || enemy)) {
+      // Rapid fire in a burst, steady suppressing fire otherwise.
+      nextShot.current = now + (now < fireUntil.current ? rand(260, 460) : rand(900, 1600));
+      fire(false);
     }
   });
 
@@ -95,7 +157,7 @@ export function UnitView({ unit, front, shape, place, index, count, team, select
       }}
     >
       <group ref={body}>
-        <UnitBody model={unit.model} team={team} />
+        <UnitBody model={unit.model} team={team} active={working && !reduced} />
       </group>
       {beaconColor && (
         <mesh ref={beacon} position-y={2.1}>

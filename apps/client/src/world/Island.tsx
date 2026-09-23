@@ -9,6 +9,8 @@ import { roadS } from "./road.ts";
 import { toWorld, type Placement } from "./layout.ts";
 import { ageOf, useNow } from "./age.ts";
 import { Rubbish } from "./Rubbish.tsx";
+import { Battle } from "./battle.ts";
+import { EnemyForce } from "./Enemies.tsx";
 import { buildProps, buildTerrain, disposeTree, IslandShape } from "./terrain.ts";
 import { UnitView } from "./UnitView.tsx";
 
@@ -114,6 +116,7 @@ export function Island({ front, units, place, selectedUnitId, reduced, onSelect,
   const terrain = useMemo(() => buildTerrain(shape, look.ground, seedKey, growth), [shape, look.ground, seedKey, growth]);
   const props = useMemo(() => buildProps(shape, seedKey, growth), [shape, seedKey, growth]);
   const tent = useMemo(() => shape.roadPoint(0.03, -2.8), [shape]);
+  const battle = useMemo(() => new Battle(), []);
   useEffect(() => () => terrain.dispose(), [terrain]);
   useEffect(() => () => disposeTree(props), [props]);
 
@@ -152,6 +155,7 @@ export function Island({ front, units, place, selectedUnitId, reduced, onSelect,
 
       <Bunker shape={shape} up={front.tests.status === "failed"} place={place} reduced={reduced} />
       <Flag shape={shape} color={flagColor} reduced={reduced} />
+      <EnemyForce battle={battle} shape={shape} place={place} bunkerUp={front.tests.status === "failed"} reduced={reduced} />
 
       {units.map((u, i) => (
         <UnitView
@@ -159,6 +163,7 @@ export function Island({ front, units, place, selectedUnitId, reduced, onSelect,
           unit={u}
           front={front}
           shape={shape}
+          battle={battle}
           place={place}
           index={i}
           count={units.length}

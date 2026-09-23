@@ -265,3 +265,25 @@ spacing guarantees and stable positions.
 - New `front.delete` command, a `front.deleted` reply, and `code`/`frontId` on
   error events. Units and saved test results for the front are removed from
   SQLite.
+
+## Units fight: manoeuvres and enemy troops (2026-09-23)
+
+- Working units manoeuvre around their progress point, shifting along and
+  across the road every one to three seconds. They turn to face the nearest
+  enemy and return to formation when idle.
+  - Squad soldiers shuffle and duck on their own.
+  - The scout's wheels spin.
+  - Units never slip past a failing-test bunker.
+- Enemy troops are grey uniforms with red helmets. They appear only while a unit
+  on the island is working: 1 + 2 per working unit (plus 2 behind a bunker),
+  at most 8.
+  - They walk in from the flag side to posts well ahead of the lead unit (or
+    around the bunker), strafe, face the nearest unit and fire red tracers.
+  - Each `unit.tool` event fires an aimed shot. The nearest enemy topples when
+    it lands, lies there, then sinks. Reinforcements keep coming.
+  - When work stops, survivors retreat toward the flag and sink away.
+- Red was removed from the team palette so friend and foe never share a colour.
+- Reduced motion: no manoeuvres, tracers or retreat animation. Enemies appear
+  at their posts and vanish instead of falling.
+- The battlefield is a per-island `Battle` object outside React. Units and
+  enemies publish positions to it each frame and pick targets from it.

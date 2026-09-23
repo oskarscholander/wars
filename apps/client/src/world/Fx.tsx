@@ -13,7 +13,11 @@ interface Puff {
   t: number;
 }
 
-type FxApi = { shoot: (from: THREE.Vector3, to: THREE.Vector3) => void; puff: (at: THREE.Vector3) => void };
+type FxApi = {
+  /** `enemy` tracers are red. */
+  shoot: (from: THREE.Vector3, to: THREE.Vector3, enemy?: boolean) => void;
+  puff: (at: THREE.Vector3) => void;
+};
 
 /** Imperative handle so units can fire without re-rendering React. No-ops until the layer mounts. */
 export const fx: FxApi = { shoot: () => {}, puff: () => {} };
@@ -30,14 +34,15 @@ export function FxLayer() {
     () => ({
       shotGeo: new THREE.SphereGeometry(0.12, 6, 4),
       shotMat: new THREE.MeshBasicMaterial({ color: "#ffd66b" }),
+      enemyMat: new THREE.MeshBasicMaterial({ color: "#ff6a4d" }),
       puffGeo: new THREE.SphereGeometry(0.3, 8, 6),
     }),
     [],
   );
 
   useEffect(() => {
-    fx.shoot = (from, to) => {
-      const mesh = new THREE.Mesh(res.shotGeo, res.shotMat);
+    fx.shoot = (from, to, enemy = false) => {
+      const mesh = new THREE.Mesh(res.shotGeo, enemy ? res.enemyMat : res.shotMat);
       mesh.position.copy(from);
       group.current?.add(mesh);
       shots.current.push({ mesh, a: from.clone(), b: to.clone(), t: 0 });
@@ -53,6 +58,7 @@ export function FxLayer() {
       fx.puff = () => {};
       res.shotGeo.dispose();
       res.shotMat.dispose();
+      res.enemyMat.dispose();
       res.puffGeo.dispose();
     };
   }, [res]);

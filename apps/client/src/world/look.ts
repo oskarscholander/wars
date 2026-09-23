@@ -15,7 +15,8 @@ export const COLORS = {
 } as const;
 
 const GROUNDS = ["#6f8a4c", "#86884a", "#5c7d5a", "#728f55", "#7b8246"];
-const TEAMS = ["#3f6fb5", "#b0791b", "#8b4f9e", "#2f8a7a", "#b5533f", "#5a6fb0"];
+// No reds: red belongs to the enemy.
+const TEAMS = ["#3f6fb5", "#b0791b", "#8b4f9e", "#2f8a7a", "#3d9b5c", "#5a6fb0"];
 
 export interface FrontLook {
   ground: string;
