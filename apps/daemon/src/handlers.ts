@@ -1,5 +1,6 @@
 import type { ClientCommand } from "@ww/shared";
 import type { Config } from "./config.ts";
+import type { Diffs } from "./diffs.ts";
 import type { Discovery } from "./discovery.ts";
 import { createWorktree, WorktreeError } from "./git/createWorktree.ts";
 import type { Store } from "./store.ts";
@@ -12,13 +13,13 @@ export interface Deps {
   discovery: Discovery;
   units: UnitManager;
   permissions: PermissionQueue;
+  diffs: Diffs;
 }
 
 /** Thrown for failures the user should see verbatim. */
 export class CommandError extends Error {}
 
 const MILESTONE: Partial<Record<ClientCommand["type"], number>> = {
-  "diff.request": 4,
   "tests.run": 6,
   "pr.open": 6,
   "pr.merge": 6,
@@ -49,6 +50,10 @@ async function dispatch(cmd: ClientCommand, deps: Deps): Promise<void> {
       return;
     case "unit.order":
       deps.units.order(cmd.unitId, cmd.text);
+      return;
+    case "diff.request":
+      if (!deps.store.state.fronts[cmd.frontId]) throw new CommandError("That front no longer exists");
+      await deps.diffs.refresh(cmd.frontId);
       return;
     case "permission.resolve":
       if (!deps.permissions.resolve(cmd.id, cmd.allow, cmd.message)) {

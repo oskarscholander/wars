@@ -12,14 +12,3 @@ export async function branchBase(worktreePath: string, repoPath: string): Promis
   }
   return "HEAD";
 }
-
-/** Files changed since the branch base, including untracked files. */
-export async function countChangedFiles(worktreePath: string, repoPath: string): Promise<number> {
-  const base = await branchBase(worktreePath, repoPath);
-  const [tracked, untracked] = await Promise.all([
-    execa("git", ["-C", worktreePath, "diff", "--name-only", base]),
-    execa("git", ["-C", worktreePath, "ls-files", "--others", "--exclude-standard"]),
-  ]);
-  const files = new Set([...tracked.stdout.split("\n"), ...untracked.stdout.split("\n")].filter(Boolean));
-  return files.size;
-}

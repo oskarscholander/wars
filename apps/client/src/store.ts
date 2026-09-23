@@ -18,6 +18,14 @@ interface ClientStore {
   selectedUnitId: string | null;
   /** Front we just asked to deploy on, so the new unit gets selected when it arrives. */
   deployingOn: string | null;
+  /** Text in the radio input. Lives here so the report sheet can prefill it. */
+  draft: string;
+  /** Bumped to ask the radio input to take focus. */
+  focusTick: number;
+  /** Front whose field report sheet is open. */
+  reportFor: string | null;
+  /** Diff signature the user approved, per front, so "Open report" hides until it changes. */
+  approved: Record<string, string>;
 
   apply: (ev: ServerEvent) => void;
   setConnection: (c: ConnectionStatus) => void;
@@ -26,6 +34,10 @@ interface ClientStore {
   selectFront: (id: string | null) => void;
   selectUnit: (id: string | null) => void;
   deploy: (frontId: string, model: UnitModel, name: string) => void;
+  setDraft: (text: string, focus?: boolean) => void;
+  openReport: (frontId: string) => void;
+  closeReport: () => void;
+  approve: (frontId: string) => void;
 }
 
 let toastSeq = 0;
@@ -39,6 +51,10 @@ export const useStore = create<ClientStore>((set, get) => ({
   selectedFrontId: null,
   selectedUnitId: null,
   deployingOn: null,
+  draft: "",
+  focusTick: 0,
+  reportFor: null,
+  approved: {},
 
   apply: (ev) => {
     const prev = get();
@@ -51,7 +67,8 @@ export const useStore = create<ClientStore>((set, get) => ({
     }
     if (selectedFrontId && !war.fronts[selectedFrontId]) selectedFrontId = null;
     if (selectedUnitId && !war.units[selectedUnitId]) selectedUnitId = null;
-    set({ war, selectedFrontId, selectedUnitId, deployingOn });
+    const reportFor = prev.reportFor && war.fronts[prev.reportFor] ? prev.reportFor : null;
+    set({ war, selectedFrontId, selectedUnitId, deployingOn, reportFor });
     if (ev.type === "error") {
       if (ev.command === "unit.create") set({ deployingOn: null });
       get().showToast(ev.message);
@@ -72,7 +89,19 @@ export const useStore = create<ClientStore>((set, get) => ({
   deploy: (frontId, model, name) => {
     if (get().send({ type: "unit.create", frontId, model, name })) set({ deployingOn: frontId });
   },
+  setDraft: (draft, focus = false) => set((s) => ({ draft, focusTick: focus ? s.focusTick + 1 : s.focusTick })),
+  openReport: (frontId) => {
+    get().send({ type: "diff.request", frontId });
+    set({ reportFor: frontId });
+  },
+  closeReport: () => set({ reportFor: null }),
+  approve: (frontId) =>
+    set((s) => ({ approved: { ...s.approved, [frontId]: diffSignature(s.war, frontId) }, reportFor: null })),
 }));
+
+/** Cheap identity for a front's current diff. */
+export const diffSignature = (war: WarState, frontId: string) =>
+  (war.diffs[frontId] ?? []).map((f) => `${f.path}:${f.added}:${f.removed}`).join("|");
 
 export const unitsOnFront = (war: WarState, frontId: string) =>
   Object.values(war.units)

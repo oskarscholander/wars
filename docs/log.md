@@ -79,3 +79,29 @@ target. Creating `feat/mention-popover` from the panel worked too, and an invali
   (fix/assignment-grading) to write a file. Both went `waiting` at the same time
   ("2 need you", one per island). I allowed Scout 2 and denied Scout 1. Only
   the grading worktree got `NOTE.txt`, and the top bar went back to "All quiet".
+
+## Milestone 4: Review (2026-09-23)
+
+**What works**
+
+- The daemon diffs each worktree against the commit where its branch left main.
+  That covers committed, staged and unstaged work. Untracked files are diffed
+  against `/dev/null` one by one, so the index is never touched. `--numstat`
+  supplies the counts, the patch is parsed into hunks with old and new line
+  numbers, and very large files are truncated to 1500 lines while keeping their
+  full counts.
+- The diff is published as `diff.updated` after every unit turn (which also
+  sets the unit's files-changed count) and on `diff.request`.
+- Field report sheet: "Open report" appears in the bubble when there are
+  unreviewed changes, and "Field report" is always in the quick orders. Tapping
+  a line closes the sheet and fills the radio with `On <file>:<line>: ` with
+  focus in the input. "Request changes" prefills `Please change: `. "Approve"
+  hides "Open report" until the diff changes. Escape closes the sheet and
+  returns focus.
+
+**Demo (acceptance, real Claude)**
+
+In Scout 2's report, `NOTE.txt` showed `+hi`. I tapped the line and the radio
+read `On NOTE.txt:1: `. I added "replace hi with hello", Scout 2 asked to Edit
+`NOTE.txt`, I allowed it, and it replied "Done.". The report then showed
+`+hello` and the file on disk said `hello`.

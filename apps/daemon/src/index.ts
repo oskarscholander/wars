@@ -1,7 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ConfigError, loadConfig } from "./config.ts";
 import { Db } from "./db.ts";
-import { countChangedFiles } from "./git/base.ts";
+import { Diffs } from "./diffs.ts";
 import { Discovery } from "./discovery.ts";
 import { buildServer, HOST } from "./server.ts";
 import { Store } from "./store.ts";
@@ -18,17 +18,19 @@ async function main() {
 
   const db = new Db();
   const permissions = new PermissionQueue(store);
+  const diffs = new Diffs(store, config.repoPath);
   const units = new UnitManager({
     store,
     db,
     permissions,
     queryFn: query,
-    changedFiles: (front) => countChangedFiles(front.path, config.repoPath),
+    // Refreshing the diff after each turn also gives the unit its files-changed count.
+    changedFiles: async (front) => (await diffs.refresh(front.id)).length,
     ...(config.anthropicApiKey ? { anthropicApiKey: config.anthropicApiKey } : {}),
     log: console.log,
   });
 
-  const app = await buildServer({ config, store, discovery, units, permissions, token });
+  const app = await buildServer({ config, store, discovery, units, permissions, diffs, token });
   await app.listen({ host: HOST, port: config.port });
 
   const n = Object.keys(store.state.fronts).length;

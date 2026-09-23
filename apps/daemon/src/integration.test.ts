@@ -11,6 +11,9 @@ import { branchSlug, createWorktree, worktreePathFor } from "./git/createWorktre
 import { buildServer } from "./server.ts";
 import { Store } from "./store.ts";
 import { Db } from "./db.ts";
+import { Diffs } from "./diffs.ts";
+import { worktreeDiff } from "./git/diff.ts";
+import { writeFile } from "node:fs/promises";
 import { UnitManager } from "./units/manager.ts";
 import { PermissionQueue } from "./units/permissions.ts";
 
@@ -68,7 +71,7 @@ describe("daemon over WebSocket", () => {
       queryFn: () => (async function* () {})(),
       changedFiles: async () => 0,
     });
-    const app = await buildServer({ config, store, discovery, units, permissions, token: "secret" });
+    const app = await buildServer({ config, store, discovery, units, permissions, diffs: new Diffs(store, repo), token: "secret" });
     await app.listen({ host: "127.0.0.1", port: 0 });
     const { port } = app.server.address() as { port: number };
 
@@ -130,5 +133,25 @@ describe("daemon over WebSocket", () => {
     } finally {
       discovery.stop();
     }
+  });
+});
+
+describe("worktreeDiff", () => {
+  it("includes committed, unstaged and untracked changes since the branch forked", async () => {
+    const wt = await createWorktree(repo, "feat/diffed");
+    const g = (...args: string[]) => execa("git", ["-C", wt, "-c", "user.email=t@t", "-c", "user.name=t", ...args]);
+    await writeFile(join(wt, "committed.ts"), "one\ntwo\n");
+    await g("add", "committed.ts");
+    await g("commit", "-q", "-m", "work");
+    await writeFile(join(wt, "committed.ts"), "one\nTWO\n");
+    await writeFile(join(wt, "fresh.txt"), "hello\n");
+
+    const files = await worktreeDiff(wt, repo);
+    expect(files.map((f) => f.path)).toEqual(["committed.ts", "fresh.txt"]);
+    expect(files[0]).toMatchObject({ added: 2, removed: 0 });
+    expect(files[1]).toMatchObject({ added: 1, removed: 0 });
+    expect(files[1]!.hunks[0]!.lines[0]).toEqual({ kind: "add", text: "hello", oldLine: null, newLine: 1 });
+    // Nothing was staged on the user's behalf.
+    expect((await g("status", "--porcelain")).stdout).toContain("?? fresh.txt");
   });
 });

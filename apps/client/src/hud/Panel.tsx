@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { UNIT_MODELS, type Unit, type UnitModel } from "@ww/shared";
 import { unitsOnFront, useStore } from "../store.ts";
 import { frontLabel } from "../world/look.ts";
@@ -35,8 +35,17 @@ export function Panel() {
   const front = useStore((s) => (s.selectedFrontId ? s.war.fronts[s.selectedFrontId] : undefined));
   const unit = useStore((s) => (s.selectedUnitId ? s.war.units[s.selectedUnitId] : undefined));
   const deployingOn = useStore((s) => s.deployingOn);
-  const { send, deploy, selectUnit } = useStore.getState();
-  const [text, setText] = useState("");
+  const { send, deploy, selectUnit, setDraft, openReport } = useStore.getState();
+  const text = useStore((s) => s.draft);
+  const setText = (t: string) => setDraft(t);
+  const focusTick = useStore((s) => s.focusTick);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!focusTick) return;
+    const el = input.current;
+    el?.focus();
+    el?.setSelectionRange(el.value.length, el.value.length);
+  }, [focusTick]);
   const [model, setModel] = useState<UnitModel>("sonnet");
   const online = connection === "open";
 
@@ -96,12 +105,18 @@ export function Panel() {
       {header}
 
       <div className="hints">
-        {unit &&
-          QUICK_ORDERS.map((o) => (
-            <button key={o} disabled={!online} onClick={() => send({ type: "unit.order", unitId: unit.id, text: o })}>
-              {o}
+        {unit && (
+          <>
+            <button disabled={!online} onClick={() => openReport(unit.frontId)}>
+              Field report
             </button>
-          ))}
+            {QUICK_ORDERS.map((o) => (
+              <button key={o} disabled={!online} onClick={() => send({ type: "unit.order", unitId: unit.id, text: o })}>
+                {o}
+              </button>
+            ))}
+          </>
+        )}
         {!unit && front && (
           <>
             {unitsOnFront(war, front.id).map((u) => (
@@ -126,6 +141,7 @@ export function Panel() {
       <form className="say" onSubmit={submit} autoComplete="off">
         <div className="field">
           <input
+            ref={input}
             aria-label={unit ? "Order" : front ? "Unit name" : "New branch name"}
             placeholder={placeholder}
             value={text}

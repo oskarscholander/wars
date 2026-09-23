@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { bubbleKey, overlayRef } from "../overlay.ts";
-import { pendingFor, useStore } from "../store.ts";
+import { diffSignature, pendingFor, useStore } from "../store.ts";
 import { RichText } from "./RichText.tsx";
 
 /** The selected unit's speech bubble: streamed reply, working dots, permission prompt. */
@@ -8,6 +8,8 @@ export function Bubble() {
   const unit = useStore((s) => (s.selectedUnitId ? s.war.units[s.selectedUnitId] : undefined));
   const war = useStore((s) => s.war);
   const send = useStore((s) => s.send);
+  const approved = useStore((s) => s.approved);
+  const openReport = useStore((s) => s.openReport);
   const textRef = useRef<HTMLDivElement>(null);
 
   // Keep the newest streamed text in view.
@@ -19,6 +21,9 @@ export function Bubble() {
   if (!unit) return null;
   const pending = pendingFor(war, unit.id)[0];
   const working = unit.status === "working";
+  const diff = war.diffs[unit.frontId];
+  const showReport =
+    !working && !pending && !!diff?.length && approved[unit.frontId] !== diffSignature(war, unit.frontId);
 
   return (
     <div className="layer" aria-live="polite">
@@ -35,6 +40,13 @@ export function Bubble() {
               </span>
             )}
           </div>
+          {showReport && (
+            <div className="acts">
+              <button className="btn plain" onClick={() => openReport(unit.frontId)}>
+                Open report
+              </button>
+            </div>
+          )}
           {pending && (
             <div className="perm">
               <span className="perm-tool">{pending.tool}</span>
