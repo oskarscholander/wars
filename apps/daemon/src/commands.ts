@@ -17,6 +17,11 @@ export function parseClientCommand(raw: unknown): ClientCommand | null {
         : null;
     case "repo.suggest":
       return { type: m.type };
+    case "front.delete":
+      if (!str(m.frontId, 64)) return null;
+      if (m.force !== undefined && typeof m.force !== "boolean") return null;
+      if (m.deleteBranch !== undefined && typeof m.deleteBranch !== "boolean") return null;
+      return { type: m.type, frontId: m.frontId, force: m.force === true, deleteBranch: m.deleteBranch === true };
     case "front.create":
       return str(m.repoId, 64) && str(m.branch, 200) ? { type: m.type, repoId: m.repoId, branch: m.branch } : null;
     case "unit.create":

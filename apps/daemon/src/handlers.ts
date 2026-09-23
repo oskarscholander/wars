@@ -2,6 +2,8 @@ import type { ClientCommand, ServerEvent } from "@ww/shared";
 import type { Config } from "./config.ts";
 import type { Diffs } from "./diffs.ts";
 import { createWorktree, WorktreeError } from "./git/createWorktree.ts";
+import { RemoveError, removeWorktree } from "./git/removeWorktree.ts";
+import type { Db } from "./db.ts";
 import { RepoError, type RepoManager } from "./repos.ts";
 import type { Store } from "./store.ts";
 import { ShippingError, type Shipping } from "./shipping/shipping.ts";
@@ -16,10 +18,19 @@ export interface Deps {
   permissions: PermissionQueue;
   diffs: Diffs;
   shipping: Shipping;
+  db: Db;
 }
 
 /** Thrown for failures the user should see verbatim. */
-export class CommandError extends Error {}
+export class CommandError extends Error {
+  constructor(
+    message: string,
+    readonly code?: "dirty" | "locked",
+    readonly frontId?: string,
+  ) {
+    super(message);
+  }
+}
 
 /** Runs a command. May return an event meant only for the client that sent it. */
 export async function handleCommand(cmd: ClientCommand, deps: Deps): Promise<ServerEvent | void> {
@@ -57,6 +68,36 @@ async function dispatch(cmd: ClientCommand, deps: Deps): Promise<ServerEvent | v
       }
       await deps.repos.refresh(repo.id);
       return;
+    }
+    case "front.delete": {
+      const front = deps.store.state.fronts[cmd.frontId];
+      const repo = front && deps.store.state.repos[front.repoId];
+      if (!front || !repo) throw new CommandError("That worktree no longer exists");
+      const busy = Object.values(deps.store.state.units).some(
+        (u) => u.frontId === front.id && (u.status === "working" || u.status === "waiting"),
+      );
+      if (busy && !cmd.force) throw new CommandError("A unit is still working here. Delete anyway to stop it.", "dirty", front.id);
+      deps.units.stopFront(front.id);
+      let result;
+      try {
+        result = await removeWorktree(repo.path, front.path, {
+          force: !!cmd.force,
+          branch: front.branch,
+          deleteBranch: !!cmd.deleteBranch,
+        });
+      } catch (err) {
+        if (err instanceof RemoveError) throw new CommandError(err.message, err.code, front.id);
+        throw err;
+      }
+      deps.db.forgetFront(front.id);
+      await deps.repos.refresh(repo.id);
+      return {
+        type: "front.deleted",
+        frontId: front.id,
+        branch: front.branch,
+        branchDeleted: result.branchDeleted,
+        ...(result.branchNote ? { branchNote: result.branchNote } : {}),
+      };
     }
     case "unit.create":
       deps.units.create(cmd.frontId, cmd.model, cmd.name);

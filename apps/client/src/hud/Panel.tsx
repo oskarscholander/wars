@@ -199,6 +199,9 @@ export function Panel() {
             <button className="deploy" disabled={!online || deployingOn === front.id} onClick={deployDefault}>
               Deploy a unit here
             </button>
+            <button className="danger" disabled={!online} onClick={() => useStore.getState().openDelete(front.id)}>
+              Delete worktree
+            </button>
           </>
         )}
       </div>

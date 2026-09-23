@@ -91,6 +91,16 @@ export class UnitManager {
     }
   }
 
+  /** Stops a front's units before its worktree is deleted: aborts queries, drops queued orders. */
+  stopFront(frontId: string): void {
+    for (const unit of Object.values(this.#deps.store.state.units)) {
+      if (unit.frontId !== frontId) continue;
+      this.#queues.delete(unit.id);
+      this.#aborts.get(unit.id)?.abort();
+      this.#deps.permissions.cancelUnit(unit.id);
+    }
+  }
+
   /** Aborts every running query, e.g. on shutdown. */
   stopAll(): void {
     for (const ac of this.#aborts.values()) ac.abort();

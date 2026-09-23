@@ -7,6 +7,8 @@ describe("parseClientCommand", () => {
     expect(parseClientCommand({ type: "repo.add", path: "~/code/app" })).toEqual({ type: "repo.add", path: "~/code/app" });
     expect(parseClientCommand({ type: "repo.update", repoId: "r", testCommand: ["make", "test"] })).toMatchObject({ testCommand: ["make", "test"] });
     expect(parseClientCommand({ type: "repo.suggest" })).toEqual({ type: "repo.suggest" });
+    expect(parseClientCommand({ type: "front.delete", frontId: "f" })).toEqual({ type: "front.delete", frontId: "f", force: false, deleteBranch: false });
+    expect(parseClientCommand({ type: "front.delete", frontId: "f", force: "yes" })).toBeNull();
     expect(parseClientCommand({ type: "unit.create", frontId: "f", model: "opus", name: "Tank" })).toMatchObject({
       model: "opus",
     });

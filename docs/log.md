@@ -250,3 +250,18 @@ spacing guarantees and stable positions.
 - PR polling no longer announces PRs it merely finds (existing ones at
   startup, ones opened elsewhere). Those update the flag quietly. Only a merge
   of a PR we saw open is announced.
+
+## Delete a worktree (2026-09-23)
+
+- "Delete worktree" on an island's panel opens a confirm dialog. It lists what
+  happens (the folder is removed, commits on the branch are kept, units are
+  stopped and forgotten, an open PR stays open).
+- The daemon runs `git worktree remove`. If git refuses because of
+  uncommitted or untracked files (or a unit is still working), the dialog
+  explains and offers "Delete anyway" (`--force`). Locked worktrees are
+  explained, not forced.
+- Optional "Also delete branch" uses `git branch -d`, so an unmerged branch is
+  kept and the toast says why.
+- New `front.delete` command, a `front.deleted` reply, and `code`/`frontId` on
+  error events. Units and saved test results for the front are removed from
+  SQLite.

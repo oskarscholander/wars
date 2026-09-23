@@ -109,6 +109,12 @@ export class Db {
       });
   }
 
+  /** Forgets a deleted worktree's units and test results. */
+  forgetFront(frontId: string): void {
+    this.#db.prepare("DELETE FROM units WHERE front_id = ?").run(frontId);
+    this.#db.prepare("DELETE FROM front_tests WHERE front_id = ?").run(frontId);
+  }
+
   listRepos(): { id: string; path: string; testCommand: string[] }[] {
     const rows = this.#db.prepare("SELECT id, path, test_command FROM repos ORDER BY added_at").all() as {
       id: string;

@@ -9,6 +9,8 @@ import { applyEvent, emptyState } from "@ww/shared";
 import { RepoManager } from "./repos.ts";
 import { detectTestCommand, findRepos, resolveRepoRoot } from "./git/repos.ts";
 import { worktreeCreatedAt } from "./git/worktrees.ts";
+import { removeWorktree } from "./git/removeWorktree.ts";
+import { existsSync } from "node:fs";
 import { branchSlug, createWorktree, worktreePathFor } from "./git/createWorktree.ts";
 import { buildServer } from "./server.ts";
 import { Store } from "./store.ts";
@@ -78,7 +80,7 @@ describe("daemon over WebSocket", () => {
       queryFn: () => (async function* () {})(),
       changedFiles: async () => 0,
     });
-    const app = await buildServer({ config, store, repos, units, permissions, diffs: new Diffs(store), shipping: new Shipping({ store }), token: "secret" });
+    const app = await buildServer({ config, store, repos, units, permissions, diffs: new Diffs(store), shipping: new Shipping({ store }), db, token: "secret" });
     await app.listen({ host: "127.0.0.1", port: 0 });
     const { port } = app.server.address() as { port: number };
 
@@ -128,6 +130,15 @@ describe("daemon over WebSocket", () => {
 
       ws.send(JSON.stringify({ type: "front.create", repoId, branch: "bad..name" }));
       await expect.poll(() => events.at(-1)).toMatchObject({ type: "error", command: "front.create" });
+
+      const two = Object.values(state.fronts).find((f) => f.branch === "feat/two")!;
+      await writeFile(join(two.path, "wip.txt"), "unsaved");
+      ws.send(JSON.stringify({ type: "front.delete", frontId: two.id }));
+      await expect.poll(() => events.at(-1)).toMatchObject({ type: "error", command: "front.delete", code: "dirty", frontId: two.id });
+      ws.send(JSON.stringify({ type: "front.delete", frontId: two.id, force: true, deleteBranch: true }));
+      await expect.poll(() => events.find((e) => e.type === "front.deleted")).toMatchObject({ frontId: two.id, branchDeleted: true });
+      expect(state.fronts[two.id]).toBeUndefined();
+      expect(existsSync(two.path)).toBe(false);
       ws.close();
     } finally {
       repos.stop();
@@ -254,5 +265,37 @@ describe("worktreeCreatedAt", () => {
     } finally {
       repos.stop();
     }
+  });
+});
+
+describe("removeWorktree", () => {
+  const g = (cwd: string, ...args: string[]) => execa("git", ["-C", cwd, "-c", "user.email=t@t", "-c", "user.name=t", ...args]);
+
+  it("removes a clean worktree and safely deletes a merged branch", async () => {
+    const wt = await createWorktree(repo, "chore/tidy");
+    await expect(removeWorktree(repo, wt, { branch: "chore/tidy", deleteBranch: true })).resolves.toEqual({ branchDeleted: true });
+    expect(existsSync(wt)).toBe(false);
+    expect((await g(repo, "branch", "--list", "chore/tidy")).stdout).toBe("");
+  });
+
+  it("refuses dirty worktrees unless forced, and keeps unmerged branches", async () => {
+    const wt = await createWorktree(repo, "feat/wip");
+    await writeFile(join(wt, "a.txt"), "a");
+    await g(wt, "add", "a.txt");
+    await g(wt, "commit", "-q", "-m", "unmerged work");
+    await writeFile(join(wt, "b.txt"), "dirty");
+    await expect(removeWorktree(repo, wt)).rejects.toMatchObject({ code: "dirty" });
+    expect(existsSync(wt)).toBe(true);
+    const r = await removeWorktree(repo, wt, { force: true, branch: "feat/wip", deleteBranch: true });
+    expect(r).toMatchObject({ branchDeleted: false, branchNote: expect.stringMatching(/isn't merged/) });
+    expect(existsSync(wt)).toBe(false);
+    expect((await g(repo, "branch", "--list", "feat/wip")).stdout).toContain("feat/wip");
+  });
+
+  it("explains locked worktrees", async () => {
+    const wt = await createWorktree(repo, "feat/locked");
+    await g(repo, "worktree", "lock", wt);
+    await expect(removeWorktree(repo, wt, { force: true })).rejects.toMatchObject({ code: "locked" });
+    await g(repo, "worktree", "unlock", wt);
   });
 });

@@ -36,6 +36,8 @@ interface ClientStore {
   /** Diff signature the user approved, per front, so "Open report" hides until it changes. */
   approved: Record<string, string>;
   reposOpen: boolean;
+  /** Delete-worktree dialog. `dirty`/`locked` are git's refusals; `pending` while the daemon works. */
+  deleting: { frontId: string; stage: "confirm" | "dirty" | "locked"; deleteBranch: boolean; pending: boolean; note?: string } | null;
   /** Latest `repo.suggestions` reply; null while loading. */
   suggestions: RepoSuggestion[] | null;
 
@@ -52,6 +54,10 @@ interface ClientStore {
   closeReport: () => void;
   approve: (frontId: string) => void;
   openRepos: () => void;
+  openDelete: (frontId: string) => void;
+  closeDelete: () => void;
+  setDeleteBranch: (on: boolean) => void;
+  confirmDelete: (force: boolean) => void;
   closeRepos: () => void;
 }
 
@@ -72,10 +78,24 @@ export const useStore = create<ClientStore>((set, get) => ({
   reportFor: null,
   approved: {},
   reposOpen: false,
+  deleting: null,
   suggestions: null,
 
   apply: (ev) => {
     if (ev.type === "repo.suggestions") return set({ suggestions: ev.suggestions });
+    if (ev.type === "front.deleted") {
+      const name = ev.branch ?? "worktree";
+      set({ deleting: null });
+      const branch = ev.branchDeleted ? " and its branch" : "";
+      return get().showToast(ev.branchNote ? `Deleted ${name}. ${ev.branchNote}` : `Deleted ${name}${branch}`);
+    }
+    if (ev.type === "error" && ev.command === "front.delete") {
+      const d = get().deleting;
+      if (d && (!ev.frontId || ev.frontId === d.frontId)) {
+        const stage = ev.code === "dirty" ? "dirty" : ev.code === "locked" ? "locked" : d.stage;
+        return set({ deleting: { ...d, stage, pending: false, note: ev.message } });
+      }
+    }
     const prev = get();
     const war = applyEvent(prev.war, ev);
     let { selectedFrontId, selectedUnitId, deployingOn } = prev;
@@ -87,7 +107,8 @@ export const useStore = create<ClientStore>((set, get) => ({
     if (selectedFrontId && !war.fronts[selectedFrontId]) selectedFrontId = null;
     if (selectedUnitId && !war.units[selectedUnitId]) selectedUnitId = null;
     const reportFor = prev.reportFor && war.fronts[prev.reportFor] ? prev.reportFor : null;
-    set({ war, selectedFrontId, selectedUnitId, deployingOn, reportFor, ...(ev.type === "state.snapshot" ? { synced: true } : {}) });
+    const deleting = prev.deleting && war.fronts[prev.deleting.frontId] ? prev.deleting : prev.deleting?.pending ? prev.deleting : null;
+    set({ war, selectedFrontId, selectedUnitId, deployingOn, reportFor, deleting, ...(ev.type === "state.snapshot" ? { synced: true } : {}) });
     if (ev.type === "unit.tool") emitTool(ev.unitId);
     const note = shippingNote(prev.war, ev);
     if (note) get().showToast(note.message, note);
@@ -123,6 +144,16 @@ export const useStore = create<ClientStore>((set, get) => ({
     get().send({ type: "repo.suggest" });
   },
   closeRepos: () => set({ reposOpen: false }),
+  openDelete: (frontId) => set({ deleting: { frontId, stage: "confirm", deleteBranch: false, pending: false } }),
+  closeDelete: () => set({ deleting: null }),
+  setDeleteBranch: (on) => set((s) => (s.deleting ? { deleting: { ...s.deleting, deleteBranch: on } } : {})),
+  confirmDelete: (force) => {
+    const d = get().deleting;
+    if (!d || d.pending) return;
+    if (get().send({ type: "front.delete", frontId: d.frontId, force, deleteBranch: d.deleteBranch })) {
+      set({ deleting: { ...d, pending: true } });
+    }
+  },
   approve: (frontId) =>
     set((s) => ({ approved: { ...s.approved, [frontId]: diffSignature(s.war, frontId) }, reportFor: null })),
 }));

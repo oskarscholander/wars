@@ -20,7 +20,16 @@ export type ServerEvent =
   | { type: "tests.result"; frontId: string; tests: TestsState }
   | { type: "pr.opened"; frontId: string; number: number; url: string }
   | { type: "pr.merged"; frontId: string }
-  | { type: "error"; message: string; command?: ClientCommand["type"] };
+  | {
+      type: "error";
+      message: string;
+      command?: ClientCommand["type"];
+      /** Machine-readable reason the client can act on, e.g. offer a forced delete. */
+      code?: "dirty" | "locked";
+      frontId?: string;
+    }
+  /** Reply to a successful `front.delete`, sent only to the asking client. */
+  | { type: "front.deleted"; frontId: string; branch: string | null; branchDeleted: boolean; branchNote?: string };
 
 /** Client → daemon. */
 export type ClientCommand =
@@ -29,6 +38,8 @@ export type ClientCommand =
   | { type: "repo.update"; repoId: string; testCommand: string[] }
   | { type: "repo.suggest" }
   | { type: "front.create"; repoId: string; branch: string }
+  /** Removes the worktree. `force` also discards uncommitted changes; `deleteBranch` safely deletes a merged branch. */
+  | { type: "front.delete"; frontId: string; force?: boolean; deleteBranch?: boolean }
   | { type: "unit.create"; frontId: string; model: UnitModel; name: string }
   | { type: "unit.order"; unitId: string; text: string }
   | { type: "permission.resolve"; id: string; allow: boolean; message?: string }

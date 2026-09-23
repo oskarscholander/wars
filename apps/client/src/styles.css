@@ -679,6 +679,44 @@ canvas {
   color: var(--panel-soft);
 }
 
+.btn.danger {
+  background: var(--alert);
+  color: #fff;
+}
+.hints .danger {
+  color: var(--alert);
+  border-color: var(--alert);
+}
+.sheet .inner.delete {
+  max-width: 520px;
+}
+.delete-facts {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.warn {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--del-bg, #f5dcd5);
+  color: #6e2418 !important;
+  font-size: 14px !important;
+}
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+}
+.check code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
 .toast {
   position: fixed;
   left: 50%;

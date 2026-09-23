@@ -67,9 +67,18 @@ export async function buildServer(deps: Deps & { token: string }): Promise<Fasti
           const reply = await handleCommand(cmd, deps);
           if (reply) send(reply);
         } catch (err) {
-          const message = err instanceof CommandError ? err.message : "Internal error";
-          if (!(err instanceof CommandError)) console.error(`command ${cmd.type} failed`, err);
-          send({ type: "error", message, command: cmd.type });
+          if (err instanceof CommandError) {
+            send({
+              type: "error",
+              message: err.message,
+              command: cmd.type,
+              ...(err.code ? { code: err.code } : {}),
+              ...(err.frontId ? { frontId: err.frontId } : {}),
+            });
+          } else {
+            console.error(`command ${cmd.type} failed`, err);
+            send({ type: "error", message: "Internal error", command: cmd.type });
+          }
         }
       });
 

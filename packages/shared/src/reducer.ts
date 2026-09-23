@@ -35,6 +35,7 @@ export function applyEvent(state: WarState, ev: ServerEvent): WarState {
     }
 
     case "repo.suggestions":
+    case "front.deleted":
       return state;
 
     case "front.upserted":

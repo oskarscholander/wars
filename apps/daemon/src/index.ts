@@ -50,7 +50,7 @@ async function main() {
   void shipping.pollAll();
   const prPoll = setInterval(() => void shipping.pollAll(), 30_000);
 
-  const app = await buildServer({ config, store, repos, units, permissions, diffs, shipping, token });
+  const app = await buildServer({ config, store, repos, units, permissions, diffs, shipping, db, token });
   await app.listen({ host: HOST, port: config.port });
 
   const r = Object.keys(store.state.repos).length;
