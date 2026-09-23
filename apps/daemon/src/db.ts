@@ -1,0 +1,105 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import Database from "better-sqlite3";
+import type { Unit, UnitModel } from "@ww/shared";
+import { wwHome } from "./token.ts";
+
+/** Fields that survive a daemon restart. Status and queues are runtime-only. */
+export type StoredUnit = Omit<Unit, "status" | "queuedOrders">;
+
+interface Row {
+  id: string;
+  front_id: string;
+  name: string;
+  model: string;
+  session_id: string | null;
+  turns: number;
+  files_changed: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  reply_id: string | null;
+  reply: string;
+  created_at: number;
+}
+
+const toUnit = (r: Row): StoredUnit => ({
+  id: r.id,
+  frontId: r.front_id,
+  name: r.name,
+  model: r.model as UnitModel,
+  sessionId: r.session_id,
+  turns: r.turns,
+  filesChanged: r.files_changed,
+  inputTokens: r.input_tokens,
+  outputTokens: r.output_tokens,
+  costUsd: r.cost_usd,
+  replyId: r.reply_id,
+  reply: r.reply,
+  createdAt: r.created_at,
+});
+
+export class Db {
+  #db: Database.Database;
+
+  constructor(path = join(wwHome(), "state.sqlite")) {
+    if (path !== ":memory:") mkdirSync(join(path, ".."), { recursive: true, mode: 0o700 });
+    this.#db = new Database(path);
+    this.#db.pragma("journal_mode = WAL");
+    this.#db.exec(`
+      CREATE TABLE IF NOT EXISTS units (
+        id TEXT PRIMARY KEY,
+        front_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        model TEXT NOT NULL,
+        session_id TEXT,
+        turns INTEGER NOT NULL DEFAULT 0,
+        files_changed INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        reply_id TEXT,
+        reply TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS units_front ON units(front_id);
+    `);
+  }
+
+  unitsForFront(frontId: string): StoredUnit[] {
+    return (this.#db.prepare("SELECT * FROM units WHERE front_id = ? ORDER BY created_at").all(frontId) as Row[]).map(
+      toUnit,
+    );
+  }
+
+  saveUnit(u: StoredUnit): void {
+    this.#db
+      .prepare(
+        `INSERT INTO units (id, front_id, name, model, session_id, turns, files_changed, input_tokens, output_tokens, cost_usd, reply_id, reply, created_at)
+         VALUES (@id, @frontId, @name, @model, @sessionId, @turns, @filesChanged, @inputTokens, @outputTokens, @costUsd, @replyId, @reply, @createdAt)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name, model = excluded.model, session_id = excluded.session_id, turns = excluded.turns,
+           files_changed = excluded.files_changed, input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
+           cost_usd = excluded.cost_usd, reply_id = excluded.reply_id, reply = excluded.reply`,
+      )
+      .run({
+        id: u.id,
+        frontId: u.frontId,
+        name: u.name,
+        model: u.model,
+        sessionId: u.sessionId,
+        turns: u.turns,
+        filesChanged: u.filesChanged,
+        inputTokens: u.inputTokens,
+        outputTokens: u.outputTokens,
+        costUsd: u.costUsd,
+        replyId: u.replyId,
+        reply: u.reply,
+        createdAt: u.createdAt,
+      });
+  }
+
+  close(): void {
+    this.#db.close();
+  }
+}

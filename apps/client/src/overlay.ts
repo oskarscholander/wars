@@ -10,6 +10,10 @@ export const anchors = new Map<string, Vector3>();
 export const overlayEls = new Map<string, HTMLElement>();
 
 export const frontAnchor = (frontId: string) => `front:${frontId}`;
+/** Point just above a unit's head. Bubbles and markers share it. */
+export const unitAnchor = (unitId: string) => `unit:${unitId}`;
+export const bubbleKey = (unitId: string) => `bubble:${unitId}`;
+export const markerKey = (unitId: string) => `marker:${unitId}`;
 
 /** Ref callback that registers an overlay element under `key`. */
 export const overlayRef = (key: string) => (el: HTMLElement | null) => {

@@ -1,13 +1,19 @@
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
-import type { Front } from "@ww/shared";
+import type { Front, Unit } from "@ww/shared";
 import { anchors, frontAnchor } from "../overlay.ts";
 import { COLORS, frontLook } from "./look.ts";
+import { GROUND_Y, roadCurve } from "./road.ts";
+import { UnitView } from "./UnitView.tsx";
 
 interface Props {
   front: Front;
+  units: Unit[];
   position: [number, number];
+  selectedUnitId: string | null;
+  reduced: boolean;
   onSelect: () => void;
+  onSelectUnit: (id: string) => void;
 }
 
 /** Irregular coastline radius, same family of curves as the prototype. */
@@ -46,10 +52,12 @@ function slab(shape: THREE.Shape, depth: number): THREE.ExtrudeGeometry {
  * Milestone 1 placeholder island: seeded coastline, beach, grass, HQ tent and
  * flag. The full terrain, road and props arrive in milestone 5.
  */
-export function Island({ front, position, onSelect }: Props) {
+export function Island({ front, units, position, selectedUnitId, reduced, onSelect, onSelectUnit }: Props) {
   const look = useMemo(() => frontLook(front), [front]);
   const beach = useMemo(() => slab(coastShape(look.phases, 1.06), 1.4), [look]);
   const grass = useMemo(() => slab(coastShape(look.phases, 0.86), 1.4), [look]);
+  const curve = useMemo(() => roadCurve(look.phases), [look]);
+  const road = useMemo(() => new THREE.TubeGeometry(curve, 80, 0.9, 4, false), [curve]);
 
   // Anchor for the HTML branch label, just off the south shore.
   const [px, pz] = position;
@@ -76,6 +84,27 @@ export function Island({ front, position, onSelect }: Props) {
       <mesh geometry={grass} position-y={-1.0} castShadow receiveShadow>
         <meshStandardMaterial color={look.ground} roughness={0.95} flatShading />
       </mesh>
+
+      {/* Placeholder road: a flattened tube along the curve. */}
+      <mesh geometry={road} position-y={GROUND_Y - 0.02} scale-y={0.05} receiveShadow>
+        <meshStandardMaterial color="#b39b6b" roughness={1} flatShading />
+      </mesh>
+
+      {units.map((u, i) => (
+        <UnitView
+          key={u.id}
+          unit={u}
+          front={front}
+          curve={curve}
+          origin={position}
+          index={i}
+          count={units.length}
+          team={look.team}
+          selected={u.id === selectedUnitId}
+          reduced={reduced}
+          onSelect={() => onSelectUnit(u.id)}
+        />
+      ))}
 
       {/* HQ tent at the south end */}
       <mesh position={[-2.8, 1.55, 9.2]} rotation-y={Math.PI / 4} castShadow>

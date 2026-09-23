@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { CameraControls } from "@react-three/drei";
-import { sortedFronts, useStore } from "../store.ts";
+import { sortedFronts, unitsOnFront, useStore } from "../store.ts";
 import { useReducedMotion } from "../useReducedMotion.ts";
 import { Island } from "./Island.tsx";
 import { ISLAND_HALF, islandPositions } from "./layout.ts";
@@ -13,6 +13,9 @@ function Scene() {
   const war = useStore((s) => s.war);
   const selectedFrontId = useStore((s) => s.selectedFrontId);
   const selectFront = useStore((s) => s.selectFront);
+  const selectedUnitId = useStore((s) => s.selectedUnitId);
+  const selectUnit = useStore((s) => s.selectUnit);
+  const reduced = useReducedMotion();
   const size = useThree((s) => s.size);
   const portrait = size.width < size.height;
 
@@ -60,8 +63,12 @@ function Scene() {
         <Island
           key={f.id}
           front={f}
+          units={unitsOnFront(war, f.id)}
           position={positions[i]!}
-          onSelect={() => selectFront(f.id === selectedFrontId ? null : f.id)}
+          selectedUnitId={selectedUnitId}
+          reduced={reduced}
+          onSelectUnit={selectUnit}
+          onSelect={() => selectFront(f.id === selectedFrontId && !selectedUnitId ? null : f.id)}
         />
       ))}
 

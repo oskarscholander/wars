@@ -1,0 +1,229 @@
+import { randomUUID } from "node:crypto";
+import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { Front, Unit, UnitModel } from "@ww/shared";
+import type { Db } from "../db.ts";
+import type { Store } from "../store.ts";
+import { TurnMapper, type Effect } from "./mapMessage.ts";
+import type { PermissionQueue } from "./permissions.ts";
+
+export type QueryFn = (params: { prompt: string; options: Options }) => AsyncIterable<SDKMessage>;
+
+export interface UnitManagerDeps {
+  store: Store;
+  db: Db;
+  permissions: PermissionQueue;
+  queryFn: QueryFn;
+  changedFiles: (front: Front) => Promise<number>;
+  /** Optional passthrough; by default the SDK uses the user's `claude login`. */
+  anthropicApiKey?: string;
+  log?: (msg: string) => void;
+}
+
+type ResultEffect = Extract<Effect, { kind: "result" }>;
+
+const bubbleBrief = (front: Front) =>
+  [
+    `You are a unit in Worktree Wars, working in the git worktree at ${front.path}` +
+      (front.branch ? ` on branch ${front.branch}.` : "."),
+    "Your replies appear in a small speech bubble above you: keep them short and lead with the outcome.",
+  ].join(" ");
+
+/**
+ * Owns every unit's Claude Agent SDK session: one active query per unit,
+ * later orders queue behind it, and sessions resume by id across restarts.
+ */
+export class UnitManager {
+  #deps: UnitManagerDeps;
+  #queues = new Map<string, string[]>();
+  #running = new Set<string>();
+  #aborts = new Map<string, AbortController>();
+  #loadedFronts = new Set<string>();
+
+  constructor(deps: UnitManagerDeps) {
+    this.#deps = deps;
+    deps.store.subscribe((ev) => {
+      // Deferred so our events reach clients after the event that caused them.
+      if (ev.type === "front.upserted") queueMicrotask(() => this.#loadFront(ev.front.id));
+      if (ev.type === "front.removed") {
+        this.#loadedFronts.delete(ev.frontId);
+        for (const [unitId, ac] of this.#aborts) {
+          if (!deps.store.state.units[unitId]) ac.abort();
+        }
+      }
+    });
+    for (const id of Object.keys(deps.store.state.fronts)) this.#loadFront(id);
+  }
+
+  create(frontId: string, model: UnitModel, name: string): Unit {
+    const { store, db } = this.#deps;
+    if (!store.state.fronts[frontId]) throw new UnitError("That front no longer exists");
+    const unit: Unit = {
+      id: randomUUID(),
+      frontId,
+      name: name.trim().slice(0, 80) || "Unit",
+      model,
+      status: "idle",
+      sessionId: null,
+      turns: 0,
+      filesChanged: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0,
+      queuedOrders: 0,
+      replyId: null,
+      reply: "",
+      createdAt: Date.now(),
+    };
+    db.saveUnit(unit);
+    store.emit({ type: "unit.upserted", unit });
+    return unit;
+  }
+
+  order(unitId: string, text: string): void {
+    if (!this.#deps.store.state.units[unitId]) throw new UnitError("That unit no longer exists");
+    const queue = this.#queues.get(unitId) ?? [];
+    queue.push(text);
+    this.#queues.set(unitId, queue);
+    if (this.#running.has(unitId)) {
+      this.#patch(unitId, { queuedOrders: queue.length });
+    } else {
+      void this.#run(unitId);
+    }
+  }
+
+  /** Aborts every running query, e.g. on shutdown. */
+  stopAll(): void {
+    for (const ac of this.#aborts.values()) ac.abort();
+  }
+
+  #loadFront(frontId: string): void {
+    const { store, db } = this.#deps;
+    if (this.#loadedFronts.has(frontId) || !store.state.fronts[frontId]) return;
+    this.#loadedFronts.add(frontId);
+    for (const stored of db.unitsForFront(frontId)) {
+      if (store.state.units[stored.id]) continue;
+      store.emit({ type: "unit.upserted", unit: { ...stored, status: "idle", queuedOrders: 0 } });
+    }
+  }
+
+  async #run(unitId: string): Promise<void> {
+    const { store } = this.#deps;
+    this.#running.add(unitId);
+    let ok = true;
+    try {
+      const queue = this.#queues.get(unitId) ?? [];
+      let text: string | undefined;
+      while ((text = queue.shift()) !== undefined) {
+        if (!store.state.units[unitId]) break;
+        this.#patch(unitId, { queuedOrders: queue.length, status: "working" });
+        ok = await this.#turn(unitId, text);
+      }
+    } finally {
+      this.#running.delete(unitId);
+      this.#queues.delete(unitId);
+      if (store.state.units[unitId]) this.#patch(unitId, { status: ok ? "idle" : "error", queuedOrders: 0 });
+    }
+  }
+
+  /** Runs one order to completion. Returns whether it succeeded. */
+  async #turn(unitId: string, text: string, retried = false): Promise<boolean> {
+    const { store, permissions, queryFn, anthropicApiKey } = this.#deps;
+    const unit = store.state.units[unitId];
+    const front = unit && store.state.fronts[unit.frontId];
+    if (!unit || !front) return false;
+
+    const ac = new AbortController();
+    this.#aborts.set(unitId, ac);
+    const mapper = new TurnMapper(front.path);
+    let result: ResultEffect | null = null;
+
+    try {
+      const q = queryFn({
+        prompt: text,
+        options: {
+          cwd: front.path,
+          model: unit.model,
+          ...(unit.sessionId ? { resume: unit.sessionId } : {}),
+          includePartialMessages: true,
+          abortController: ac,
+          systemPrompt: { type: "preset", preset: "claude_code", append: bubbleBrief(front) },
+          canUseTool: async (tool, input, { signal }) => {
+            const d = await permissions.request(unitId, tool, input, signal);
+            return d.allow ? { behavior: "allow", updatedInput: input } : { behavior: "deny", message: d.message };
+          },
+          ...(anthropicApiKey ? { env: { ...process.env, ANTHROPIC_API_KEY: anthropicApiKey } } : {}),
+        },
+      });
+      for await (const msg of q) {
+        for (const e of mapper.map(msg)) {
+          if (e.kind === "result") result = e;
+          else this.#applyEffect(unitId, e);
+        }
+      }
+    } catch (err) {
+      if (ac.signal.aborted) return false;
+      const message = err instanceof Error ? err.message : String(err);
+      // A session id from another machine or a wiped ~/.claude: start fresh once.
+      if (!retried && unit.sessionId && /no conversation found|session.*not found/i.test(message)) {
+        this.#patch(unitId, { sessionId: null });
+        return this.#turn(unitId, text, true);
+      }
+      this.#deps.log?.(`unit ${unitId} query failed: ${message}`);
+      result = { kind: "result", ok: false, costUsd: 0, inputTokens: 0, outputTokens: 0, errorText: message };
+    } finally {
+      this.#aborts.delete(unitId);
+      permissions.cancelUnit(unitId);
+    }
+
+    const current = store.state.units[unitId];
+    if (!current) return false;
+    if (!result) result = { kind: "result", ok: false, costUsd: 0, inputTokens: 0, outputTokens: 0, errorText: "The session ended without a result." };
+    if (result.errorText && !result.ok) {
+      store.emit({ type: "unit.text", unitId, messageId: `error-${randomUUID()}`, delta: `Error: ${result.errorText}` });
+    }
+
+    let filesChanged = current.filesChanged;
+    try {
+      filesChanged = await this.#deps.changedFiles(front);
+    } catch {
+      // keep the previous count
+    }
+    const after = store.state.units[unitId];
+    if (!after) return false;
+    this.#patch(unitId, {
+      turns: after.turns + 1,
+      filesChanged,
+      costUsd: Math.max(after.costUsd, result.costUsd),
+      inputTokens: after.inputTokens + result.inputTokens,
+      outputTokens: after.outputTokens + result.outputTokens,
+    });
+    return result.ok;
+  }
+
+  #applyEffect(unitId: string, e: Exclude<Effect, ResultEffect>): void {
+    const { store } = this.#deps;
+    switch (e.kind) {
+      case "session":
+        if (store.state.units[unitId]?.sessionId !== e.sessionId) this.#patch(unitId, { sessionId: e.sessionId });
+        return;
+      case "text":
+        store.emit({ type: "unit.text", unitId, messageId: e.messageId, delta: e.delta });
+        return;
+      case "tool":
+        store.emit({ type: "unit.tool", unitId, tool: e.tool, summary: e.summary });
+        return;
+    }
+  }
+
+  /** Emits the updated unit and persists the durable fields. */
+  #patch(unitId: string, patch: Partial<Unit>): void {
+    const { store, db } = this.#deps;
+    const unit = store.state.units[unitId];
+    if (!unit) return;
+    const next = { ...unit, ...patch };
+    store.emit({ type: "unit.upserted", unit: next });
+    db.saveUnit(next);
+  }
+}
+
+export class UnitError extends Error {}

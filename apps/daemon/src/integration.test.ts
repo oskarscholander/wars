@@ -10,6 +10,9 @@ import { Discovery } from "./discovery.ts";
 import { branchSlug, createWorktree, worktreePathFor } from "./git/createWorktree.ts";
 import { buildServer } from "./server.ts";
 import { Store } from "./store.ts";
+import { Db } from "./db.ts";
+import { UnitManager } from "./units/manager.ts";
+import { PermissionQueue } from "./units/permissions.ts";
 
 let root: string;
 let repo: string;
@@ -57,7 +60,15 @@ describe("daemon over WebSocket", () => {
     const discovery = new Discovery({ repoPath: repo, store, intervalMs: 60_000, log: () => {} });
     await discovery.start();
     const config = { repoPath: repo, testCommand: ["true"] as [string], defaultModel: "sonnet" as const, port: 0 };
-    const app = await buildServer({ config, store, discovery, token: "secret" });
+    const permissions = new PermissionQueue(store);
+    const units = new UnitManager({
+      store,
+      db: new Db(":memory:"),
+      permissions,
+      queryFn: () => (async function* () {})(),
+      changedFiles: async () => 0,
+    });
+    const app = await buildServer({ config, store, discovery, units, permissions, token: "secret" });
     await app.listen({ host: "127.0.0.1", port: 0 });
     const { port } = app.server.address() as { port: number };
 
