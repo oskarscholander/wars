@@ -58,7 +58,7 @@ interface ClientStore {
   dismissToast: () => void;
   /** Select an island (null = All fronts overview). */
   selectFront: (id: string | null) => void;
-  /** Deselect without moving the camera (e.g. clicking the water). */
+  /** Deselect without moving the camera. */
   clearSelection: () => void;
   selectUnit: (id: string | null) => void;
   deploy: (frontId: string, model: UnitModel, name: string) => void;

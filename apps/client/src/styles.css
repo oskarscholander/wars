@@ -72,6 +72,12 @@ canvas {
   display: block;
   touch-action: none;
 }
+body.panning canvas {
+  cursor: grab;
+}
+body.panning canvas:active {
+  cursor: grabbing;
+}
 
 .top {
   position: fixed;

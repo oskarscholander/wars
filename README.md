@@ -43,6 +43,13 @@ The daemon creates its handshake token in `~/.worktree-wars/token` on first run.
 Vite dev server passes it to the page. Set `WW_CONFIG` or `WW_HOME` to point at a
 different config file or state directory.
 
+## Controls
+
+- Drag to orbit, scroll or pinch to zoom. Hold **Space** and drag to pan.
+- Click an island to focus it (its agents' terminals open on the left). Clicking
+  islands never zooms out.
+- Click the water or **All fronts** for the full view.
+
 ## Checks
 
 ```sh

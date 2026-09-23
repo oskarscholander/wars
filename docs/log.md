@@ -390,3 +390,13 @@ spacing guarantees and stable positions.
 - Verified with real sessions: Sonnet (Auto) wrote a file and ran `ls` with
   no prompts. Haiku asked inline, Allow went through, and the transcripts were
   intact after a reload.
+
+## Space to pan, water for the full view (2026-09-23)
+
+- Hold Space and left-drag to pan (a grab cursor while held). Release to orbit
+  again. It's ignored while typing in an input, so Space still types in
+  terminals.
+- Clicking the water goes back to the full view (drags don't count).
+- Verified: a Space-drag moved the target with zoom and angles unchanged, a plain
+  drag orbited, "a b" typed normally in a terminal, and a water click selected
+  All fronts and zoomed out.

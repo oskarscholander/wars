@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { CameraControls } from "@react-three/drei";
+import CameraControlsImpl from "camera-controls";
 import { sortedFronts, sortedRepos, unitsOnFront, useStore } from "../store.ts";
 import { useReducedMotion } from "../useReducedMotion.ts";
 import { Island } from "./Island.tsx";
@@ -15,7 +16,7 @@ import { FxLayer } from "./Fx.tsx";
 function Scene() {
   const war = useStore((s) => s.war);
   const selectFront = useStore((s) => s.selectFront);
-  const clearSelection = useStore((s) => s.clearSelection);
+
   const selectedUnitId = useStore((s) => s.selectedUnitId);
   const selectUnit = useStore((s) => s.selectUnit);
   const reduced = useReducedMotion();
@@ -62,7 +63,7 @@ function Scene() {
         rotation-x={-Math.PI / 2}
         receiveShadow
         onClick={(e) => {
-          if (e.delta < 5) clearSelection(); // a drag to orbit is not a click
+          if (e.delta < 5) selectFront(null); // back to the full view; a drag to orbit is not a click
         }}
       >
         <planeGeometry args={[600, 600]} />
@@ -162,6 +163,33 @@ function CameraRig({ places }: { places: Map<string, Placement> }) {
     void c.setLookAt(pos.x, pos.y, pos.z, target.x, target.y, target.z, animate);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- move only on explicit requests (tick) or first islands
   }, [goal.tick, hasIslands]);
+
+  // Hold Space to pan with a left-drag (like design tools); release to orbit again.
+  useEffect(() => {
+    const typing = (t: EventTarget | null) =>
+      t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
+    const set = (pan: boolean) => {
+      const c = ref.current;
+      if (!c) return;
+      c.mouseButtons.left = pan ? CameraControlsImpl.ACTION.TRUCK : CameraControlsImpl.ACTION.ROTATE;
+      document.body.classList.toggle("panning", pan);
+    };
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || typing(e.target)) return;
+      e.preventDefault(); // no page scroll or button activation
+      if (!e.repeat) set(true);
+    };
+    const up = (e: KeyboardEvent) => e.code === "Space" && set(false);
+    const blur = () => set(false);
+    addEventListener("keydown", down);
+    addEventListener("keyup", up);
+    addEventListener("blur", blur);
+    return () => {
+      removeEventListener("keydown", down);
+      removeEventListener("keyup", up);
+      removeEventListener("blur", blur);
+    };
+  }, []);
 
   // Dev-only hook so browser tests can read the camera distance.
   useEffect(() => {
