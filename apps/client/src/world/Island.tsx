@@ -11,7 +11,7 @@ import { ageOf, useNow } from "./age.ts";
 import { Rubbish } from "./Rubbish.tsx";
 import { Battle } from "./battle.ts";
 import { EnemyForce } from "./Enemies.tsx";
-import { buildProps, buildTerrain, disposeTree, IslandShape, TERRAIN } from "./terrain.ts";
+import { buildProps, buildTerrain, disposeTree, islandShape, TERRAIN, type IslandShape } from "./terrain.ts";
 import { NavGrid } from "./nav.ts";
 import { UnitView } from "./UnitView.tsx";
 
@@ -111,7 +111,7 @@ function Flag({ shape, color, reduced }: { shape: IslandShape; color: string; re
 export function Island({ front, units, place, selectedUnitId, reduced, onSelect, onSelectUnit }: Props) {
   const look = useMemo(() => frontLook(front), [front.branch, front.path]); // eslint-disable-line react-hooks/exhaustive-deps
   const seedKey = front.branch ?? front.path;
-  const shape = useMemo(() => new IslandShape(look.phases), [look]);
+  const shape = useMemo(() => islandShape(seedKey), [seedKey]);
   const now = useNow();
   const { growth, rubbish } = ageOf(front.createdAt, now);
   const terrain = useMemo(() => buildTerrain(shape, look.ground, seedKey, growth), [shape, look.ground, seedKey, growth]);

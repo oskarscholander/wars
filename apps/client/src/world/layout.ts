@@ -1,23 +1,26 @@
 import { hashString, mulberry32 } from "./seed.ts";
 
-/** Where one island sits: centre in world space and its yaw. */
+/** Where one island sits: centre in world space, its yaw, and the radius that holds its land. */
 export interface Placement {
   x: number;
   z: number;
   yaw: number;
+  r: number;
 }
 
 /** Radius of one island's footprint (coast plus beach shelf), in world units. */
 export const ISLAND_RADIUS = 15;
-/** Closest two island centres may be; each pair gets a little extra seeded slack. */
-const MIN_GAP = 27;
-/** Closest two islands of different repos may be, so archipelagos read as separate. */
-const REPO_GAP = 36;
+/** Water between two islands' land in the same repo (beach shelves may meet); plus a little seeded slack. */
+const GAP = 1.5;
+/** Water between islands of different repos, so archipelagos read as separate. */
+const REPO_GAP = 9;
 
 export interface IslandGroup {
   key: string;
   /** Island ids in a stable order (oldest first), so new worktrees never move old ones. */
   ids: string[];
+  /** Land radius per island (same order as ids); defaults to ISLAND_RADIUS. */
+  radii?: number[];
 }
 
 type Point = { x: number; z: number };
@@ -49,17 +52,18 @@ function findSpot(fits: (p: Point, extra: number) => boolean, seed: string, slac
  */
 export function scatterIslands(groups: IslandGroup[], portrait: boolean): Map<string, Placement> {
   const out = new Map<string, Placement>();
-  const clusters: { key: string; members: (Point & { id: string; yaw: number })[] }[] = [];
+  const clusters: { key: string; members: (Point & { id: string; yaw: number; r: number })[] }[] = [];
 
   for (const g of groups) {
     if (!g.ids.length) continue;
-    const placed: (Point & { id: string; yaw: number })[] = [];
-    for (const id of g.ids) {
-      const fits = (p: Point, extra: number) => placed.every((q) => Math.hypot(p.x - q.x, p.z - q.z) >= MIN_GAP + extra);
+    const placed: (Point & { id: string; yaw: number; r: number })[] = [];
+    g.ids.forEach((id, i) => {
+      const r = g.radii?.[i] ?? ISLAND_RADIUS;
+      const fits = (p: Point, extra: number) => placed.every((q) => Math.hypot(p.x - q.x, p.z - q.z) >= r + q.r + GAP + extra);
       const spot = findSpot(fits, `island:${id}`, 3, !placed.length);
       const yaw = (mulberry32(hashString(`yaw:${id}`))() - 0.5) * 1.1;
-      placed.push({ ...spot, id, yaw });
-    }
+      placed.push({ ...spot, id, yaw, r });
+    });
     // Recentre the cluster on its own centroid so packing uses a tight radius.
     const cx = placed.reduce((s, p) => s + p.x, 0) / placed.length;
     const cz = placed.reduce((s, p) => s + p.z, 0) / placed.length;
@@ -67,17 +71,17 @@ export function scatterIslands(groups: IslandGroup[], portrait: boolean): Map<st
   }
 
   // Pack repos by real island distances, not bounding circles, so archipelagos sit close but apart.
-  const taken: Point[] = [];
+  const taken: (Point & { r: number })[] = [];
   for (const c of clusters) {
     const fits = (at: Point, extra: number) =>
-      c.members.every((m) => taken.every((q) => Math.hypot(at.x + m.x - q.x, at.z + m.z - q.z) >= REPO_GAP + extra));
+      c.members.every((m) => taken.every((q) => Math.hypot(at.x + m.x - q.x, at.z + m.z - q.z) >= m.r + q.r + REPO_GAP + extra));
     const at = findSpot(fits, `cluster:${c.key}`, 6, !taken.length);
-    for (const m of c.members) taken.push({ x: at.x + m.x, z: at.z + m.z });
+    for (const m of c.members) taken.push({ x: at.x + m.x, z: at.z + m.z, r: m.r });
     for (const m of c.members) {
       const x = at.x + m.x;
       const z = at.z + m.z;
       // Stretch only: distances never shrink, so islands never overlap.
-      out.set(m.id, { x: portrait ? x : x * 1.1, z: portrait ? z * 1.1 : z, yaw: m.yaw });
+      out.set(m.id, { x: portrait ? x : x * 1.1, z: portrait ? z * 1.1 : z, yaw: m.yaw, r: m.r });
     }
   }
   return out;

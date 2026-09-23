@@ -346,3 +346,24 @@ spacing guarantees and stable positions.
 - **Links in bubbles.** Bare http(s) URLs and markdown links open in a new
   tab. Other schemes are never linked, and trailing punctuation stays
   outside the link.
+
+## Distinct island shapes (2026-09-23)
+
+- Every island gets its own seeded character (`IslandShape(seed)`):
+  - Size (base radius 7.2–9.8) and aspect (1.05–1.65).
+  - A crescent or banana bend.
+  - Three coastline lobes with random counts (2–4, 5–7, 8–11) and strengths.
+  - 0–2 bays cut in and 0–2 peninsulas pushed out.
+  - Sometimes 1–2 islets offshore.
+  - Terrain style: flat, rolling or peak (a rocky mountain away from the road).
+  - Its own pine/round tree mix and density; peak islands get more rocks.
+- The road follows the land's centreline: it starts at the widest slice of land
+  and walks north and south through connected land, with a control point every
+  1.5 units. It winds only as far as the land on each side allows, and a damping
+  pass keeps the curve off the coast.
+- The terrain square grew to 32×40, and shapes are scaled to fit it.
+- The layout uses each island's real size (`extent`), so small islands sit
+  closer and big ones get room. Land never overlaps.
+- Tests over 300 seeds: every road stays on land, HQ and flag on solid ground,
+  every island inside its square, a spread of sizes and areas (over 1.6×) and
+  all three terrain styles.

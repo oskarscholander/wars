@@ -5,7 +5,8 @@ import { CameraControls } from "@react-three/drei";
 import { sortedFronts, sortedRepos, unitsOnFront, useStore } from "../store.ts";
 import { useReducedMotion } from "../useReducedMotion.ts";
 import { Island } from "./Island.tsx";
-import { ISLAND_RADIUS, scatterIslands, type Placement } from "./layout.ts";
+import { scatterIslands, type Placement } from "./layout.ts";
+import { islandShape } from "./terrain.ts";
 import { COLORS } from "./look.ts";
 import { OverlayProjector } from "./OverlayProjector.tsx";
 import { FxLayer } from "./Fx.tsx";
@@ -26,10 +27,12 @@ function Scene() {
     () =>
       sortedRepos(war).map((r) => ({
         key: r.id,
-        ids: fronts
-          .filter((f) => f.repoId === r.id)
-          .sort((a, b) => (a.createdAt ?? Infinity) - (b.createdAt ?? Infinity) || a.path.localeCompare(b.path))
-          .map((f) => f.id),
+        ...(() => {
+          const mine = fronts
+            .filter((f) => f.repoId === r.id)
+            .sort((a, b) => (a.createdAt ?? Infinity) - (b.createdAt ?? Infinity) || a.path.localeCompare(b.path));
+          return { ids: mine.map((f) => f.id), radii: mine.map((f) => islandShape(f.branch ?? f.path).extent) };
+        })(),
       })),
     [war, fronts],
   );
@@ -74,7 +77,7 @@ function Scene() {
           key={f.id}
           front={f}
           units={unitsOnFront(war, f.id)}
-          place={places.get(f.id) ?? { x: 0, z: 0, yaw: 0 }}
+          place={places.get(f.id) ?? { x: 0, z: 0, yaw: 0, r: 15 }}
           selectedUnitId={selectedUnitId}
           reduced={reduced}
           onSelectUnit={selectUnit}
@@ -93,10 +96,7 @@ const DEFAULT_POLAR = 0.8;
 const TOP_BAR_PX = 64;
 
 const islandBox = (p: Placement) =>
-  new THREE.Box3(
-    new THREE.Vector3(p.x - ISLAND_RADIUS, 0, p.z - ISLAND_RADIUS),
-    new THREE.Vector3(p.x + ISLAND_RADIUS, 3, p.z + ISLAND_RADIUS),
-  );
+  new THREE.Box3(new THREE.Vector3(p.x - p.r, 0, p.z - p.r), new THREE.Vector3(p.x + p.r, 3, p.z + p.r));
 
 /**
  * Moves the camera only when asked (the store's `camera.tick`), keeping the

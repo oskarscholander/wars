@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { hashString, mulberry32 } from "./seed.ts";
-import { disposeTree, type IslandShape } from "./terrain.ts";
+import { disposeTree, TERRAIN, type IslandShape } from "./terrain.ts";
 
 const MAX_ITEMS = 32;
 
@@ -43,8 +43,8 @@ function buildJunk(shape: IslandShape, seed: string): Junk[] {
   const rnd = mulberry32(hashString(seed + ":rubbish"));
   const junk: Junk[] = [];
   for (let tries = 0; junk.length < MAX_ITEMS && tries < 4000; tries++) {
-    const x = (rnd() - 0.5) * 34;
-    const z = (rnd() - 0.5) * 44;
+    const x = (rnd() - 0.5) * (TERRAIN.width + 4);
+    const z = (rnd() - 0.5) * (TERRAIN.depth + 4);
     const h = shape.height(x, z);
     const e = shape.edge(x, z);
     const onBeach = h > -0.35 && h < 0.3 && e > 0.3;
