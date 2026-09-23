@@ -1,11 +1,12 @@
 import type * as THREE from "three";
+import type { Mover, NavGrid, Point } from "./nav.ts";
 
 /** A friendly unit as the battle sees it, in island-local coordinates. */
 export interface Combatant {
-  x: number;
-  z: number;
+  /** Live position (shared with the unit's mover, so separation can nudge it). */
+  pos: Point;
   y: number;
-  /** Road curve parameter. */
+  /** Road curve parameter nearest the unit. */
   s: number;
   working: boolean;
 }
@@ -14,14 +15,12 @@ export type EnemyState = "arriving" | "fighting" | "dying" | "leaving";
 
 export interface Enemy {
   id: number;
-  s: number;
-  lane: number;
-  x: number;
+  mover: Mover;
   y: number;
-  z: number;
-  /** Where it holds position; it strafes around this. */
-  post: { s: number; lane: number };
-  offset: { s: number; lane: number; ts: number; tl: number };
+  /** Where it holds position; it moves between spots near this. */
+  post: Point;
+  /** Where it came from and retreats to. */
+  home: Point;
   state: EnemyState;
   /** Seconds in the current state. */
   t: number;
@@ -32,15 +31,17 @@ export interface Enemy {
 }
 
 const alive = (e: Enemy) => e.state === "arriving" || e.state === "fighting";
+const dist2 = (a: Point, b: Point) => (a.x - b.x) ** 2 + (a.z - b.z) ** 2;
 
 /**
- * Shared, mutable battlefield for one island: units publish where they are,
- * the enemy force publishes its soldiers, and each side picks targets from
- * the other. Lives outside React; updated every frame.
+ * Shared, mutable battlefield for one island: its walkable grid, where the
+ * units are, and the enemy force. Each side picks targets from the other.
+ * Lives outside React; updated every frame.
  */
 export class Battle {
   readonly units = new Map<string, Combatant>();
   enemies: Enemy[] = [];
+  nav: NavGrid | null = null;
 
   get engaged(): boolean {
     for (const u of this.units.values()) if (u.working) return true;
@@ -53,23 +54,23 @@ export class Battle {
     return n;
   }
 
-  /** Furthest road position of any working unit. */
-  leadS(): number {
-    let s = 0;
-    for (const u of this.units.values()) if (u.working) s = Math.max(s, u.s);
-    return s;
+  /** The working unit furthest along the road. */
+  lead(): Combatant | null {
+    let best: Combatant | null = null;
+    for (const u of this.units.values()) if (u.working && (!best || u.s > best.s)) best = u;
+    return best;
   }
 
   aliveEnemies(): Enemy[] {
     return this.enemies.filter(alive);
   }
 
-  nearestEnemy(x: number, z: number): Enemy | null {
+  nearestEnemy(p: Point): Enemy | null {
     let best: Enemy | null = null;
     let d = Infinity;
     for (const e of this.enemies) {
       if (!alive(e) || e.killAt !== null) continue;
-      const dd = (e.x - x) ** 2 + (e.z - z) ** 2;
+      const dd = dist2(e.mover.pos, p);
       if (dd < d) {
         d = dd;
         best = e;
@@ -78,17 +79,31 @@ export class Battle {
     return best;
   }
 
-  nearestUnit(x: number, z: number): Combatant | null {
+  nearestUnit(p: Point): Combatant | null {
     let best: Combatant | null = null;
     let d = Infinity;
     for (const u of this.units.values()) {
-      const dd = (u.x - x) ** 2 + (u.z - z) ** 2 - (u.working ? 1000 : 0);
+      const dd = dist2(u.pos, p) - (u.working ? 1000 : 0);
       if (dd < d) {
         d = dd;
         best = u;
       }
     }
     return best;
+  }
+
+  /** Distance from `p` to the closest friendly unit. */
+  distToUnits(p: Point): number {
+    let d = Infinity;
+    for (const u of this.units.values()) d = Math.min(d, Math.sqrt(dist2(u.pos, p)));
+    return d;
+  }
+
+  /** Distance from `p` to the closest living enemy. */
+  distToEnemies(p: Point): number {
+    let d = Infinity;
+    for (const e of this.enemies) if (alive(e)) d = Math.min(d, Math.sqrt(dist2(e.mover.pos, p)));
+    return d;
   }
 
   /** Marks an enemy to fall when the tracer aimed at it lands. */

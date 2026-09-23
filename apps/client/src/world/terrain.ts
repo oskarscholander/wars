@@ -8,6 +8,12 @@ const smooth = (a: number, b: number, x: number) => {
 };
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
+export interface Circle {
+  x: number;
+  z: number;
+  r: number;
+}
+
 /** Island footprint in local units. */
 export const TERRAIN = { width: 26, depth: 34, segX: 78, segZ: 102 } as const;
 
@@ -31,6 +37,20 @@ export class IslandShape {
     }
     this.curve = new THREE.CatmullRomCurve3(pts);
     this.#samples = this.curve.getSpacedPoints(160);
+  }
+
+  /** Road curve parameter (0..1) of the road point nearest to (x, z). */
+  nearestS(x: number, z: number): number {
+    let m = Infinity;
+    let best = 0;
+    this.#samples.forEach((p, i) => {
+      const d = (p.x - x) ** 2 + (p.z - z) ** 2;
+      if (d < m) {
+        m = d;
+        best = i;
+      }
+    });
+    return best / (this.#samples.length - 1);
   }
 
   roadDist(x: number, z: number): number {
@@ -122,7 +142,8 @@ const mat = (color: string) => new THREE.MeshStandardMaterial({ color, roughness
  * placed in a fixed sequence, so an island gains trees as it ages instead of
  * reshuffling. Returned as one group to add to the scene.
  */
-export function buildProps(shape: IslandShape, seed: string, growth = 0.4): THREE.Group {
+export function buildProps(shape: IslandShape, seed: string, growth = 0.4): THREE.Group & { userData: { obstacles: Circle[] } } {
+  const obstacles: Circle[] = [];
   const rnd = mulberry32(hashString(seed + ":props"));
   const g = new THREE.Group();
   const trunkMat = mat("#5b4630");
@@ -157,6 +178,7 @@ export function buildProps(shape: IslandShape, seed: string, growth = 0.4): THRE
     const s = (0.75 + rnd() * 0.5) * grown;
     tree.scale.setScalar(s);
     tree.position.set(x, h - 0.05, z);
+    obstacles.push({ x, z, r: 0.5 * s });
     g.add(tree);
     placed++;
   }
@@ -181,13 +203,15 @@ export function buildProps(shape: IslandShape, seed: string, growth = 0.4): THRE
     if (shape.edge(x, z) < 0.6) continue;
     const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.3 + rnd() * 0.3, 0), rockMat);
     r.position.set(x, shape.height(x, z) + 0.2, z);
+    obstacles.push({ x, z, r: 0.45 });
     r.rotation.set(rnd(), rnd(), rnd());
     g.add(r);
   }
   g.traverse((o) => {
     if (o instanceof THREE.Mesh) o.castShadow = o.receiveShadow = true;
   });
-  return g;
+  g.userData.obstacles = obstacles;
+  return g as THREE.Group & { userData: { obstacles: Circle[] } };
 }
 
 /** Frees GPU memory for everything under `root`. */

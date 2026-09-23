@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
-import { BUNKER_AT } from "@ww/shared";
 import { Battle, headingTo, lerpAngle, type Enemy } from "./battle.ts";
 import { fx } from "./Fx.tsx";
 import { toWorld, type Placement } from "./layout.ts";
-import { roadS } from "./road.ts";
+import { Mover, separate, type Point } from "./nav.ts";
 import type { IslandShape } from "./terrain.ts";
 
 const MAX_ENEMIES = 8;
+const SPEED = 1.4;
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 
 interface Kit {
@@ -45,16 +45,18 @@ interface Props {
   battle: Battle;
   shape: IslandShape;
   place: Placement;
-  bunkerUp: boolean;
+  /** Island-local bunker position while it stands, else null. */
+  bunker: Point | null;
   reduced: boolean;
 }
 
 /**
- * The opposing force on one island. Soldiers turn up ahead of working units,
- * strafe and return fire; each hit from a unit's tool call drops one, more
- * arrive while the fight lasts, and survivors retreat when work stops.
+ * The opposing force on one island. Soldiers come ashore from the far end of
+ * the island, walk real paths to cover a few metres from the working units,
+ * shift between spots on land and return fire. Each hit from a unit's tool call
+ * drops one; survivors retreat when work stops.
  */
-export function EnemyForce({ battle, shape, place, bunkerUp, reduced }: Props) {
+export function EnemyForce({ battle, shape, place, bunker, reduced }: Props) {
   const group = useRef<THREE.Group>(null);
   const nextSpawn = useRef(0);
   const seq = useRef(0);
@@ -82,30 +84,52 @@ export function EnemyForce({ battle, shape, place, bunkerUp, reduced }: Props) {
     [battle, kit],
   );
 
+  /** Somewhere on land, well away from every unit, preferring the flag end. */
+  const pickHome = (lead: Point, leadS: number): Point | null => {
+    const nav = battle.nav!;
+    const flag = nav.nearestWalkable(shape.roadPoint(0.97));
+    if (flag && battle.distToUnits(flag) > 9) return flag;
+    return (
+      nav.randomNear(lead, 9, 16, Math.random, (p) => battle.distToUnits(p) > 8 && shape.nearestS(p.x, p.z) > leadS) ??
+      nav.randomNear(lead, 8, 18, Math.random, (p) => battle.distToUnits(p) > 7)
+    );
+  };
+
+  /** Cover a few metres from the units, on land, ahead up the road if possible (or around the bunker). */
+  const pickPost = (lead: Point, leadS: number): Point | null => {
+    const nav = battle.nav!;
+    const spaced = (p: Point) => battle.distToEnemies(p) > 1.4;
+    if (bunker && leadS < shape.nearestS(bunker.x, bunker.z)) {
+      const p = nav.randomNear(bunker, 1.8, 4, Math.random, (q) => battle.distToUnits(q) > 4 && spaced(q));
+      if (p) return p;
+    }
+    return (
+      nav.randomNear(lead, 5.5, 9.5, Math.random, (p) => battle.distToUnits(p) > 5 && spaced(p) && shape.nearestS(p.x, p.z) >= leadS) ??
+      nav.randomNear(lead, 5, 10, Math.random, (p) => battle.distToUnits(p) > 4.5 && spaced(p))
+    );
+  };
+
   const spawn = (now: number) => {
-    const lead = battle.leadS();
-    const bunkerS = roadS(BUNKER_AT);
-    const defend = bunkerUp && lead < bunkerS;
-    const postS = defend ? bunkerS + rand(-0.02, 0.07) : Math.min(0.95, lead + rand(0.2, 0.36));
-    const post = { s: postS, lane: rand(-3.6, 3.6) };
-    const s = reduced ? post.s : Math.min(0.97, post.s + rand(0.06, 0.12));
+    const lead = battle.lead();
+    if (!lead || !battle.nav) return;
+    const home = pickHome(lead.pos, lead.s);
+    const post = pickPost(lead.pos, lead.s);
+    if (!home || !post) return;
+    const mover = new Mover(reduced ? { ...post } : { ...home }, SPEED);
+    if (!reduced && !mover.goTo(battle.nav, post)) return;
     const object = makeSoldier(kit);
-    const p = shape.roadPoint(s, post.lane);
-    object.position.set(p.x, p.y, p.z);
+    object.position.set(mover.pos.x, shape.height(mover.pos.x, mover.pos.z), mover.pos.z);
     group.current?.add(object);
     battle.enemies.push({
       id: ++seq.current,
-      s,
-      lane: post.lane,
-      x: p.x,
-      y: p.y,
-      z: p.z,
+      mover,
+      y: shape.height(mover.pos.x, mover.pos.z),
       post,
-      offset: { s: 0, lane: 0, ts: 0, tl: 0 },
+      home,
       state: reduced ? "fighting" : "arriving",
       t: 0,
-      nextShot: now + rand(600, 1400),
-      nextMove: now + rand(800, 2000),
+      nextShot: now + rand(800, 1600),
+      nextMove: now + rand(1500, 3000),
       killAt: null,
       object,
     });
@@ -113,11 +137,12 @@ export function EnemyForce({ battle, shape, place, bunkerUp, reduced }: Props) {
 
   useFrame((_, delta) => {
     const g = group.current;
-    if (!g) return;
+    const nav = battle.nav;
+    if (!g || !nav) return;
     const dt = Math.min(0.05, delta);
     const now = performance.now();
     const engaged = battle.engaged;
-    const desired = engaged ? Math.min(MAX_ENEMIES, 1 + battle.workingCount() * 2 + (bunkerUp ? 2 : 0)) : 0;
+    const desired = engaged ? Math.min(MAX_ENEMIES, 1 + battle.workingCount() * 2 + (bunker ? 2 : 0)) : 0;
 
     if (engaged && battle.aliveEnemies().length < desired && now > nextSpawn.current && battle.enemies.length < MAX_ENEMIES + 4) {
       spawn(now);
@@ -127,15 +152,18 @@ export function EnemyForce({ battle, shape, place, bunkerUp, reduced }: Props) {
     const keep: Enemy[] = [];
     for (const e of battle.enemies) {
       e.t += dt;
+      const pos = e.mover.pos;
       if (e.killAt !== null && now >= e.killAt && (e.state === "arriving" || e.state === "fighting")) {
         e.state = "dying";
         e.t = 0;
-        const w = toWorld(place, e.x, e.z);
+        e.mover.path = [];
+        const w = toWorld(place, pos.x, pos.z);
         fx.puff(new THREE.Vector3(w.x, e.y + 0.5, w.z));
       }
       if (!engaged && (e.state === "arriving" || e.state === "fighting")) {
         e.state = "leaving";
         e.t = 0;
+        e.mover.goTo(nav, e.home);
       }
 
       if (e.state === "dying") {
@@ -154,44 +182,48 @@ export function EnemyForce({ battle, shape, place, bunkerUp, reduced }: Props) {
         continue;
       }
 
+      let moved = { x: 0, z: 0 };
       if (e.state === "leaving") {
-        if (reduced || e.t > 3 || e.s > 0.97) {
-          g.remove(e.object);
+        if (reduced || e.t > 6 || (!e.mover.moving && e.t > 0.5)) {
+          // Out of sight behind the lines: fade into the ground.
+          e.object.position.y -= dt * 1.2;
+          if (reduced || e.object.position.y < e.y - 1.2) {
+            g.remove(e.object);
+            continue;
+          }
+          keep.push(e);
           continue;
         }
-        e.s = Math.min(0.99, e.s + dt * 0.09);
-        if (e.t > 2) e.object.position.y -= dt * 0.8;
+        moved = e.mover.step(dt);
       } else if (e.state === "arriving") {
-        e.s += (e.post.s - e.s) * Math.min(1, dt * 1.4);
-        if (Math.abs(e.s - e.post.s) < 0.01) e.state = "fighting";
+        moved = reduced ? moved : e.mover.step(dt);
+        if (!e.mover.moving) e.state = "fighting";
       } else if (!reduced) {
-        // Strafe around the post.
-        if (now > e.nextMove) {
-          e.offset.ts = rand(-0.025, 0.025);
-          e.offset.tl = rand(-1.2, 1.2);
-          e.nextMove = now + rand(1200, 2600);
+        // Shift between spots near the post, never closer than a few metres to a unit.
+        if (!e.mover.moving && now > e.nextMove) {
+          const spot = nav.randomNear(e.post, 0.5, 2.2, Math.random, (p) => battle.distToUnits(p) > 4);
+          if (spot) e.mover.goTo(nav, spot);
+          e.nextMove = now + rand(1800, 3600);
         }
-        e.offset.s += (e.offset.ts - e.offset.s) * Math.min(1, dt * 1.6);
-        e.offset.lane += (e.offset.tl - e.offset.lane) * Math.min(1, dt * 1.6);
-        e.s = e.post.s + e.offset.s;
-        e.lane = Math.max(-4, Math.min(4, e.post.lane + e.offset.lane));
+        moved = e.mover.step(dt);
       }
 
-      const p = shape.roadPoint(e.s, e.lane);
-      e.x = p.x;
-      e.z = p.z;
-      e.y = p.y;
-      if (e.state !== "leaving" || e.t <= 2) e.object.position.set(p.x, p.y, p.z);
-      else e.object.position.set(p.x, e.object.position.y, p.z);
+      e.y = shape.height(pos.x, pos.z);
+      e.object.position.set(pos.x, e.y, pos.z);
 
-      const target = battle.nearestUnit(e.x, e.z);
-      const face = e.state === "leaving" ? p.rot + Math.PI : target ? headingTo(target.x - e.x, target.z - e.z) : p.rot + Math.PI;
-      e.object.rotation.y = lerpAngle(e.object.rotation.y, face, Math.min(1, dt * 6));
+      const target = battle.nearestUnit(pos);
+      const walking = Math.hypot(moved.x, moved.z) > 1e-4;
+      const face = walking
+        ? headingTo(moved.x, moved.z)
+        : target
+          ? headingTo(target.pos.x - pos.x, target.pos.z - pos.z)
+          : e.object.rotation.y;
+      e.object.rotation.y = reduced ? face : lerpAngle(e.object.rotation.y, face, Math.min(1, dt * 7));
 
-      if (!reduced && e.state === "fighting" && target && now > e.nextShot) {
+      if (!reduced && e.state === "fighting" && !walking && target && now > e.nextShot) {
         e.nextShot = now + rand(900, 1800);
-        const a = toWorld(place, e.x, e.z);
-        const b = toWorld(place, target.x + rand(-0.8, 0.8), target.z + rand(-0.8, 0.8));
+        const a = toWorld(place, pos.x, pos.z);
+        const b = toWorld(place, target.pos.x + rand(-0.8, 0.8), target.pos.z + rand(-0.8, 0.8));
         tmp.from.set(a.x, e.y + 0.6, a.z);
         tmp.to.set(b.x, target.y + 0.3, b.z);
         fx.shoot(tmp.from, tmp.to, true);
@@ -199,6 +231,11 @@ export function EnemyForce({ battle, shape, place, bunkerUp, reduced }: Props) {
       keep.push(e);
     }
     battle.enemies = keep;
+
+    // Keep everyone from standing inside each other.
+    const agents: Point[] = [...battle.units.values()].map((u) => u.pos);
+    for (const e of keep) if (e.state === "arriving" || e.state === "fighting") agents.push(e.mover.pos);
+    separate(nav, agents, 1.2);
   });
 
   return <group ref={group} />;

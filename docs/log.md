@@ -287,3 +287,28 @@ spacing guarantees and stable positions.
   at their posts and vanish instead of falling.
 - The battlefield is a per-island `Battle` object outside React. Units and
   enemies publish positions to it each frame and pick targets from it.
+
+## Pathfinding: nobody fights from the water (2026-09-23)
+
+- Each island has a walkable grid (0.5-unit cells): land above the waterline,
+  minus trees, rocks and the HQ tent, plus the bunker as a dynamic blocker
+  while it stands (`world/nav.ts`).
+- A* on the 8-connected grid with no corner cutting, smoothed by line of sight.
+  Targets in the water snap to the nearest land.
+- Units and enemies are path-following agents (`Mover`) with their own speeds
+  (scout 2.6, tank 1.7, squad 1.5, enemy 1.4). They face the way they walk, and
+  face and fire at their target when standing.
+  - Units: home is their progress point on the road. New units march there
+    from HQ. While working they move between reachable spots near home, keeping
+    3.5 away from enemies and never passing a standing bunker.
+  - Enemies: come ashore at the flag end, or somewhere at least 8 from every
+    unit. They walk to cover 5–10 away from the lead unit on land (ahead up
+    the road when possible, or around the bunker), shift between nearby spots,
+    and walk back home to retreat.
+  - A separation pass keeps agents from overlapping without pushing anyone off
+    land.
+- Client unit tests for the nav grid (lake detour, obstacles, dynamic blockers,
+  snapping, mover, separation). The client is now a Vitest project.
+- Measured in the browser via a dev-only hook: 40 samples over 20 s with three
+  units near the flag and up to three enemies. No agent was ever off land, and
+  the closest enemy stayed 7.8 away.
