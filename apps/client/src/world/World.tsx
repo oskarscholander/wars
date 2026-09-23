@@ -5,7 +5,7 @@ import { CameraControls } from "@react-three/drei";
 import { sortedFronts, sortedRepos, unitsOnFront, useStore } from "../store.ts";
 import { useReducedMotion } from "../useReducedMotion.ts";
 import { Island } from "./Island.tsx";
-import { ISLAND_HALF, islandPositions } from "./layout.ts";
+import { ISLAND_RADIUS, scatterIslands, type Placement } from "./layout.ts";
 import { COLORS } from "./look.ts";
 import { OverlayProjector } from "./OverlayProjector.tsx";
 import { FxLayer } from "./Fx.tsx";
@@ -21,24 +21,37 @@ function Scene() {
   const portrait = size.width < size.height;
 
   const fronts = useMemo(() => sortedFronts(war), [war]);
+  // Oldest first within each repo, so a new worktree never moves the islands already on the map.
   const groups = useMemo(
-    () => sortedRepos(war).map((r) => fronts.filter((f) => f.repoId === r.id).length),
+    () =>
+      sortedRepos(war).map((r) => ({
+        key: r.id,
+        ids: fronts
+          .filter((f) => f.repoId === r.id)
+          .sort((a, b) => (a.createdAt ?? Infinity) - (b.createdAt ?? Infinity) || a.path.localeCompare(b.path))
+          .map((f) => f.id),
+      })),
     [war, fronts],
   );
-  const groupKey = groups.join(",");
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- recompute only when the grouping changes
-  const positions = useMemo(() => islandPositions(groups, portrait), [groupKey, portrait]);
+  const groupKey = JSON.stringify(groups);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- recompute only when membership or order changes
+  const places = useMemo(() => scatterIslands(groups, portrait), [groupKey, portrait]);
 
   const focus = useMemo(() => {
     const box = new THREE.Box3();
-    const add = ([x, z]: [number, number]) =>
-      box.union(new THREE.Box3(new THREE.Vector3(x - ISLAND_HALF.x, 0, z - ISLAND_HALF.z), new THREE.Vector3(x + ISLAND_HALF.x, 3, z + ISLAND_HALF.z)));
-    const i = fronts.findIndex((f) => f.id === selectedFrontId);
-    if (i >= 0) add(positions[i]!);
-    else if (positions.length) positions.forEach(add);
-    else add([0, 0]);
+    const add = (p: Placement) =>
+      box.union(
+        new THREE.Box3(
+          new THREE.Vector3(p.x - ISLAND_RADIUS, 0, p.z - ISLAND_RADIUS),
+          new THREE.Vector3(p.x + ISLAND_RADIUS, 3, p.z + ISLAND_RADIUS),
+        ),
+      );
+    const selected = selectedFrontId ? places.get(selectedFrontId) : undefined;
+    if (selected) add(selected);
+    else if (places.size) places.forEach(add);
+    else add({ x: 0, z: 0, yaw: 0 });
     return box;
-  }, [fronts, positions, selectedFrontId]);
+  }, [places, selectedFrontId]);
 
   return (
     <>
@@ -66,12 +79,12 @@ function Scene() {
         <meshStandardMaterial color={COLORS.seabed} roughness={0.9} />
       </mesh>
 
-      {fronts.map((f, i) => (
+      {fronts.map((f) => (
         <Island
           key={f.id}
           front={f}
           units={unitsOnFront(war, f.id)}
-          position={positions[i]!}
+          place={places.get(f.id) ?? { x: 0, z: 0, yaw: 0 }}
           selectedUnitId={selectedUnitId}
           reduced={reduced}
           onSelectUnit={selectUnit}

@@ -206,3 +206,37 @@ one added it with 4 islands. Typing a path inside the second repo's worktree add
 that repo, with `npm test` detected. A new front in the second repo was created from
 the panel. Both repos survived a daemon restart, and removing one took its islands off
 the map while its worktrees stayed on disk.
+
+## Island age and scattered archipelagos (2026-09-23)
+
+- The daemon reads each worktree's creation time from git's admin folder
+  (`.git/worktrees/<name>`: its birth time, or the `gitdir` file git writes once
+  at creation). It's sent as `Front.createdAt` and looked up once per worktree.
+- Age drives how the island looks, in tenths so geometry rebuilds only when the
+  look visibly changes:
+  - Growth, full at about two months: from about 12 to 60 trees, trees up to
+    40% bigger, bushes creeping along the road, and grass taking over the road
+    from the edges in.
+  - Rubbish, starting after two days and full at about three months: up to 32
+    crates, barrels, tyres, planks and bottles, tipped over on the beach or
+    bobbing offshore (static with reduced motion).
+  - Trees and junk are placed in a fixed seeded sequence, so an island gains
+    them as it ages instead of reshuffling.
+  - The panel shows "new", "5 h old", "12 d old" or "4 mo old", and chips
+    show it on hover.
+- Scattered layout: each repo is a loose archipelago. Islands take the first
+  free spot on rings around the cluster, starting from a seeded angle, and get
+  a seeded yaw of ±30°. Islands of the same repo are at least 31 apart, islands
+  of different repos at least 45. Ordering is oldest first, so a new worktree
+  never moves existing islands. Landscape stretches the map wider, portrait
+  taller.
+- Island labels hide when they'd overlap one already drawn (the selected
+  island's label wins).
+- Fix: the Repos sheet no longer auto-opens before the first snapshot has
+  arrived.
+
+Demo: nine islands across two repos, with ages from new to 120 days injected
+through the WebSocket (the sandbox filesystem records real birth times). The
+120-day island is dense and littered, with its road half grown over. The new one
+is sparse and clean. Layout checks over 840 random configurations kept the
+spacing guarantees and stable positions.

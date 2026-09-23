@@ -45,6 +45,8 @@ export interface Front {
   head: string;
   locked: boolean;
   prunable: boolean;
+  /** When the worktree was created (ms since epoch), or null if git can't tell. Drives island age. */
+  createdAt: number | null;
   tests: TestsState;
   pr: PrState | null;
 }

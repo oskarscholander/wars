@@ -75,8 +75,11 @@ export class IslandShape {
   }
 }
 
-/** Vertex-coloured terrain mesh: wet sand, beach, road, grass shading, rock tops. */
-export function buildTerrain(shape: IslandShape, ground: string, seed: string): THREE.BufferGeometry {
+/**
+ * Vertex-coloured terrain mesh: wet sand, beach, road, grass shading, rock tops.
+ * `growth` (0..1) lets grass creep over the road on old worktrees.
+ */
+export function buildTerrain(shape: IslandShape, ground: string, seed: string, growth = 0): THREE.BufferGeometry {
   const rnd = mulberry32(hashString(seed + ":terrain"));
   const geo = new THREE.PlaneGeometry(TERRAIN.width, TERRAIN.depth, TERRAIN.segX, TERRAIN.segZ);
   geo.rotateX(-Math.PI / 2);
@@ -94,7 +97,12 @@ export function buildTerrain(shape: IslandShape, ground: string, seed: string): 
     const h = shape.height(x, z, d);
     pos.setY(i, h);
     if (h < 0.28) c.set(h < -0.15 ? COLORS.wetSand : COLORS.sand);
-    else if (d < 1.3) c.copy(road1).lerp(road2, rnd() * 0.4);
+    else if (d < 1.3) {
+      c.copy(road1).lerp(road2, rnd() * 0.4);
+      // Overgrowth: edges first, then patches across the middle.
+      const creep = growth * (0.35 + 0.65 * (d / 1.3)) + (rnd() - 0.5) * 0.3 * growth;
+      c.lerp(g1, Math.max(0, Math.min(0.85, creep)));
+    }
     else if (h > 2.4) c.set(COLORS.rock);
     else c.copy(g1).lerp(g2, clamp01((h - 0.3) / 2.2 + (rnd() - 0.5) * 0.18));
     col[i * 3] = c.r;
@@ -108,8 +116,13 @@ export function buildTerrain(shape: IslandShape, ground: string, seed: string): 
 
 const mat = (color: string) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, flatShading: true });
 
-/** Trees and rocks, scattered with the island's seed. Returned as one group to add to the scene. */
-export function buildProps(shape: IslandShape, seed: string): THREE.Group {
+/**
+ * Trees, bushes and rocks, scattered with the island's seed. `growth` (0..1)
+ * adds trees and makes them bigger, and grows bushes along the road. Trees are
+ * placed in a fixed sequence, so an island gains trees as it ages instead of
+ * reshuffling. Returned as one group to add to the scene.
+ */
+export function buildProps(shape: IslandShape, seed: string, growth = 0.4): THREE.Group {
   const rnd = mulberry32(hashString(seed + ":props"));
   const g = new THREE.Group();
   const trunkMat = mat("#5b4630");
@@ -118,8 +131,10 @@ export function buildProps(shape: IslandShape, seed: string): THREE.Group {
   const rockMat = mat("#8a8778");
   const trunkGeo = new THREE.CylinderGeometry(0.12, 0.16, 0.6, 8);
 
+  const target = Math.round(12 + growth * 48);
+  const grown = 0.8 + growth * 0.5;
   let placed = 0;
-  for (let tries = 0; placed < 34 && tries < 400; tries++) {
+  for (let tries = 0; placed < target && tries < 900; tries++) {
     const x = (rnd() - 0.5) * 24;
     const z = (rnd() - 0.5) * 32;
     if (shape.edge(x, z) < 0.85) continue;
@@ -139,11 +154,26 @@ export function buildProps(shape: IslandShape, seed: string): THREE.Group {
     crown.position.y = round ? 1.1 : 1.3;
     crown.rotation.y = rnd() * 6;
     tree.add(trunk, crown);
-    const s = 0.75 + rnd() * 0.5;
+    const s = (0.75 + rnd() * 0.5) * grown;
     tree.scale.setScalar(s);
     tree.position.set(x, h - 0.05, z);
     g.add(tree);
     placed++;
+  }
+  // Bushes creeping in along the road on older islands.
+  const brnd = mulberry32(hashString(seed + ":bushes"));
+  const bushMat = mat("#4d6e38");
+  const bushes = Math.round(growth * growth * 30);
+  for (let placedB = 0, tries = 0; placedB < bushes && tries < 600; tries++) {
+    const x = (brnd() - 0.5) * 22;
+    const z = (brnd() - 0.5) * 30;
+    const d = shape.roadDist(x, z);
+    if (d < 1.1 || d > 2.4 || shape.edge(x, z) < 0.8) continue;
+    const bush = new THREE.Mesh(new THREE.IcosahedronGeometry(0.35 + brnd() * 0.3, 0), bushMat);
+    bush.position.set(x, shape.height(x, z, d) + 0.15, z);
+    bush.scale.y = 0.7;
+    g.add(bush);
+    placedB++;
   }
   for (let k = 0; k < 10; k++) {
     const x = (rnd() - 0.5) * 18;

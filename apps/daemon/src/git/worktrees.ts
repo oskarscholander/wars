@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { readFile, stat } from "node:fs/promises";
+import { isAbsolute, join, resolve } from "node:path";
 import { execa } from "execa";
 
 export interface Worktree {
@@ -9,6 +11,8 @@ export interface Worktree {
   bare: boolean;
   locked: boolean;
   prunable: boolean;
+  /** Filled in by discovery for linked worktrees. */
+  createdAt?: number | null;
 }
 
 /** Parses `git worktree list --porcelain`. The first entry is the main worktree. */
@@ -58,4 +62,24 @@ export async function listWorktrees(repoPath: string): Promise<Worktree[]> {
 export async function gitCommonDir(repoPath: string): Promise<string> {
   const { stdout } = await execa("git", ["-C", repoPath, "rev-parse", "--path-format=absolute", "--git-common-dir"]);
   return stdout.trim();
+}
+
+/**
+ * When a linked worktree was created, from git's admin folder for it
+ * (`.git/worktrees/<name>`, made by `git worktree add`). Uses the folder's birth
+ * time where the filesystem records one, else the `gitdir` file inside it,
+ * which git writes once at creation. Null when neither can be read.
+ */
+export async function worktreeCreatedAt(worktreePath: string): Promise<number | null> {
+  try {
+    const dotGit = (await readFile(join(worktreePath, ".git"), "utf8")).trim();
+    const m = /^gitdir:\s*(.+)$/m.exec(dotGit);
+    if (!m) return null;
+    const admin = isAbsolute(m[1]!) ? m[1]! : resolve(worktreePath, m[1]!);
+    const [dir, gitdir] = await Promise.all([stat(admin), stat(join(admin, "gitdir")).catch(() => null)]);
+    const times = [dir.birthtimeMs, gitdir?.mtimeMs ?? 0].filter((t) => t > 0);
+    return times.length ? Math.round(Math.min(...times)) : null;
+  } catch {
+    return null;
+  }
 }

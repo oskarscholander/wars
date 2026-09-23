@@ -6,13 +6,16 @@ import { anchors, frontAnchor } from "../overlay.ts";
 import { fx } from "./Fx.tsx";
 import { COLORS, frontLook } from "./look.ts";
 import { roadS } from "./road.ts";
+import { toWorld, type Placement } from "./layout.ts";
+import { ageOf, useNow } from "./age.ts";
+import { Rubbish } from "./Rubbish.tsx";
 import { buildProps, buildTerrain, disposeTree, IslandShape } from "./terrain.ts";
 import { UnitView } from "./UnitView.tsx";
 
 interface Props {
   front: Front;
   units: Unit[];
-  position: [number, number];
+  place: Placement;
   selectedUnitId: string | null;
   reduced: boolean;
   onSelect: () => void;
@@ -23,7 +26,7 @@ const BUNKER_RED = new THREE.Color("#7a3b2e");
 const BUNKER_DEAD = new THREE.Color("#555550");
 
 /** Failing tests: a bunker blocks the road. When they pass it sinks and greys out. */
-function Bunker({ shape, up, origin, reduced }: { shape: IslandShape; up: boolean; origin: [number, number]; reduced: boolean }) {
+function Bunker({ shape, up, place, reduced }: { shape: IslandShape; up: boolean; place: Placement; reduced: boolean }) {
   const p = useMemo(() => shape.roadPoint(roadS(BUNKER_AT)), [shape]);
   const group = useRef<THREE.Group>(null);
   const mat = useMemo(() => new THREE.MeshStandardMaterial({ color: BUNKER_RED, roughness: 0.9, flatShading: true }), []);
@@ -40,10 +43,11 @@ function Bunker({ shape, up, origin, reduced }: { shape: IslandShape; up: boolea
       if (reduced) setVisible(false);
       else {
         sinking.current = true;
-        fx.puff(new THREE.Vector3(origin[0] + p.x, p.y + 1, origin[1] + p.z));
+        const w = toWorld(place, p.x, p.z);
+        fx.puff(new THREE.Vector3(w.x, p.y + 1, w.z));
       }
     }
-  }, [up, reduced, visible, mat, p, origin]);
+  }, [up, reduced, visible, mat, p, place]);
 
   useEffect(() => () => mat.dispose(), [mat]);
 
@@ -101,30 +105,32 @@ function Flag({ shape, color, reduced }: { shape: IslandShape; color: string; re
 }
 
 /** One worktree as an island: seeded terrain, road from HQ to the flag, props, bunker and units. */
-export function Island({ front, units, position, selectedUnitId, reduced, onSelect, onSelectUnit }: Props) {
+export function Island({ front, units, place, selectedUnitId, reduced, onSelect, onSelectUnit }: Props) {
   const look = useMemo(() => frontLook(front), [front.branch, front.path]); // eslint-disable-line react-hooks/exhaustive-deps
   const seedKey = front.branch ?? front.path;
   const shape = useMemo(() => new IslandShape(look.phases), [look]);
-  const terrain = useMemo(() => buildTerrain(shape, look.ground, seedKey), [shape, look.ground, seedKey]);
-  const props = useMemo(() => buildProps(shape, seedKey), [shape, seedKey]);
+  const now = useNow();
+  const { growth, rubbish } = ageOf(front.createdAt, now);
+  const terrain = useMemo(() => buildTerrain(shape, look.ground, seedKey, growth), [shape, look.ground, seedKey, growth]);
+  const props = useMemo(() => buildProps(shape, seedKey, growth), [shape, seedKey, growth]);
   const tent = useMemo(() => shape.roadPoint(0.03, -2.8), [shape]);
   useEffect(() => () => terrain.dispose(), [terrain]);
   useEffect(() => () => disposeTree(props), [props]);
 
-  // Anchor for the HTML branch label, near HQ on the south shore.
-  const [px, pz] = position;
+  // Anchor for the HTML branch label, just past HQ on the south shore.
   useEffect(() => {
     const key = frontAnchor(front.id);
     const hq = shape.roadPoint(0);
-    anchors.set(key, new THREE.Vector3(px + hq.x, hq.y, pz + hq.z + 3));
+    const w = toWorld(place, hq.x, hq.z + 3);
+    anchors.set(key, new THREE.Vector3(w.x, hq.y, w.z));
     return () => void anchors.delete(key);
-  }, [front.id, px, pz, shape]);
+  }, [front.id, place, shape]);
 
   const flagColor =
     front.pr?.state === "merged" ? look.team : front.pr?.state === "open" ? COLORS.brass : COLORS.flagEnemy;
 
   return (
-    <group position={[px, 0, pz]}>
+    <group position={[place.x, 0, place.z]} rotation-y={place.yaw}>
       <mesh
         geometry={terrain}
         receiveShadow
@@ -137,13 +143,14 @@ export function Island({ front, units, position, selectedUnitId, reduced, onSele
         <meshStandardMaterial vertexColors roughness={0.95} flatShading />
       </mesh>
       <primitive object={props} />
+      <Rubbish shape={shape} seed={seedKey} level={rubbish} reduced={reduced} />
 
       <mesh position={[tent.x, tent.y + 0.75, tent.z]} rotation-y={Math.PI / 4 + tent.rot} castShadow>
         <coneGeometry args={[1.5, 1.6, 4]} />
         <meshStandardMaterial color={COLORS.tent} roughness={0.9} flatShading />
       </mesh>
 
-      <Bunker shape={shape} up={front.tests.status === "failed"} origin={position} reduced={reduced} />
+      <Bunker shape={shape} up={front.tests.status === "failed"} place={place} reduced={reduced} />
       <Flag shape={shape} color={flagColor} reduced={reduced} />
 
       {units.map((u, i) => (
@@ -152,7 +159,7 @@ export function Island({ front, units, position, selectedUnitId, reduced, onSele
           unit={u}
           front={front}
           shape={shape}
-          origin={position}
+          place={place}
           index={i}
           count={units.length}
           team={look.team}

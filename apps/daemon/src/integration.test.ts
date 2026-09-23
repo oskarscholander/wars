@@ -8,6 +8,7 @@ import type { ServerEvent, WarState } from "@ww/shared";
 import { applyEvent, emptyState } from "@ww/shared";
 import { RepoManager } from "./repos.ts";
 import { detectTestCommand, findRepos, resolveRepoRoot } from "./git/repos.ts";
+import { worktreeCreatedAt } from "./git/worktrees.ts";
 import { branchSlug, createWorktree, worktreePathFor } from "./git/createWorktree.ts";
 import { buildServer } from "./server.ts";
 import { Store } from "./store.ts";
@@ -228,5 +229,30 @@ describe("repos", () => {
     expect(again.state.fronts).toEqual({});
     expect(db.listRepos()).toEqual([]);
     second.stop();
+  });
+});
+
+describe("worktreeCreatedAt", () => {
+  it("reads when a linked worktree was created, and null for anything else", async () => {
+    const before = Date.now() - 5_000;
+    const wt = await createWorktree(repo, "feat/aged");
+    const at = await worktreeCreatedAt(wt);
+    expect(at).not.toBeNull();
+    expect(at!).toBeGreaterThan(before);
+    expect(at!).toBeLessThanOrEqual(Date.now() + 1_000);
+    await expect(worktreeCreatedAt(repo)).resolves.toBeNull();
+    await expect(worktreeCreatedAt(join(root, "missing"))).resolves.toBeNull();
+  });
+
+  it("fills createdAt on discovered fronts", async () => {
+    const store = new Store();
+    const repos = repoManager(store);
+    await repos.add(repo);
+    try {
+      const aged = Object.values(store.state.fronts).find((f) => f.branch === "feat/aged");
+      expect(aged?.createdAt).toBeGreaterThan(0);
+    } finally {
+      repos.stop();
+    }
   });
 });

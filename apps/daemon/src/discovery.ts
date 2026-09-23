@@ -1,11 +1,16 @@
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 import { emptyTests, type Front, type ServerEvent } from "@ww/shared";
-import { frontIdFor, gitCommonDir, linkedWorktrees, listWorktrees, type Worktree } from "./git/worktrees.ts";
+import { frontIdFor, gitCommonDir, linkedWorktrees, listWorktrees, worktreeCreatedAt, type Worktree } from "./git/worktrees.ts";
 import type { Store } from "./store.ts";
 
 const sameGitInfo = (a: Front, b: Front) =>
-  a.path === b.path && a.branch === b.branch && a.head === b.head && a.locked === b.locked && a.prunable === b.prunable;
+  a.path === b.path &&
+  a.branch === b.branch &&
+  a.head === b.head &&
+  a.locked === b.locked &&
+  a.prunable === b.prunable &&
+  a.createdAt === b.createdAt;
 
 /**
  * Turns a fresh worktree listing into the events that bring `current` up to date.
@@ -19,7 +24,14 @@ export function diffFronts(current: Record<string, Front>, trees: Worktree[], re
     const id = frontIdFor(t.path);
     seen.add(id);
     const prev = current[id];
-    const git = { path: t.path, branch: t.branch, head: t.head, locked: t.locked, prunable: t.prunable };
+    const git = {
+      path: t.path,
+      branch: t.branch,
+      head: t.head,
+      locked: t.locked,
+      prunable: t.prunable,
+      createdAt: t.createdAt ?? prev?.createdAt ?? null,
+    };
     const next: Front = prev ? { ...prev, ...git } : { id, repoId, ...git, tests: emptyTests(), pr: null };
     if (!prev || !sameGitInfo(prev, next)) events.push({ type: "front.upserted", front: next });
   }
@@ -85,6 +97,13 @@ export class Discovery {
   async #refreshOnce(): Promise<void> {
     try {
       const trees = await listWorktrees(this.#opts.repoPath);
+      // Creation time never changes, so only look it up for worktrees we haven't seen.
+      await Promise.all(
+        linkedWorktrees(trees).map(async (t) => {
+          const known = this.#opts.store.state.fronts[frontIdFor(t.path)];
+          t.createdAt = known?.createdAt ?? (await worktreeCreatedAt(t.path));
+        }),
+      );
       if (!this.#opts.store.state.repos[this.#opts.repoId]) return;
       for (const ev of diffFronts(this.#opts.store.state.fronts, trees, this.#opts.repoId)) this.#opts.store.emit(ev);
       this.#lastError = "";

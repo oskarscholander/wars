@@ -3,6 +3,7 @@ import { UNIT_MODELS, type Front, type Unit, type UnitModel } from "@ww/shared";
 import { sortedRepos, unitsOnFront, useStore } from "../store.ts";
 import { frontLabel } from "../world/look.ts";
 import { UNIT_KIND } from "../world/UnitModels.tsx";
+import { formatAge, useNow } from "../world/age.ts";
 
 const QUICK_ORDERS = ["Report what you changed", "Commit your work"];
 const DEFAULT_NAME: Record<UnitModel, string> = { opus: "Tank", sonnet: "Squad", haiku: "Scout" };
@@ -98,6 +99,7 @@ export function Panel() {
   const newFrontRepo = repos.find((r) => r.id === repoChoice) ?? repos[0];
   const openRepos = useStore((s) => s.openRepos);
   const online = connection === "open";
+  const now = useNow(60_000);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -133,6 +135,7 @@ export function Panel() {
         <div className="stats">
           <TestsStat front={front} />
           {front.pr && <span>PR #{front.pr.number} {front.pr.state}</span>}
+          {formatAge(front.createdAt, now) && <span>{formatAge(front.createdAt, now)}</span>}
           <span>{front.head.slice(0, 7)}</span>
           {front.locked && <span>locked</span>}
           {front.prunable && <span className="fail">prunable</span>}

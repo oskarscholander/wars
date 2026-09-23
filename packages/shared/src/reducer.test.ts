@@ -13,6 +13,7 @@ const front = (id: string, repoId = "r"): Front => ({
   head: "abc",
   locked: false,
   prunable: false,
+  createdAt: null,
   tests: emptyTests(),
   pr: null,
 });

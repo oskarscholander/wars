@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { Front, WarState } from "@ww/shared";
 import { frontTitle, sortedFronts, useStore } from "../store.ts";
+import { formatAge, useNow } from "../world/age.ts";
 
 const needsYou = (war: WarState, frontId?: string) =>
   Object.values(war.permissions).filter((p) => !frontId || p.frontId === frontId).length;
@@ -26,6 +27,7 @@ export function TopBar() {
   const repoCount = Object.keys(war.repos).length;
   const fronts = useMemo(() => sortedFronts(war), [war]);
   const waitingAll = needsYou(war);
+  const now = useNow(60_000);
 
   const allSub =
     connection !== "open"
@@ -47,7 +49,7 @@ export function TopBar() {
       {fronts.map((f) => {
         const sub = frontSubtitle(war, f);
         return (
-          <button key={f.id} aria-pressed={f.id === selectedFrontId} onClick={() => selectFront(f.id)} title={f.path}>
+          <button key={f.id} aria-pressed={f.id === selectedFrontId} onClick={() => selectFront(f.id)} title={[f.path, formatAge(f.createdAt, now)].filter(Boolean).join(" · ")}>
             <b>{frontTitle(war, f)}</b>
             <small className={sub.tone}>{sub.text}</small>
           </button>

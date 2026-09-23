@@ -13,6 +13,8 @@ interface ClientStore {
   /** Mirror of daemon state: only ever changed by daemon events. */
   war: WarState;
   connection: ConnectionStatus;
+  /** True once the first snapshot of this connection has arrived. */
+  synced: boolean;
   toast: Toast | null;
   /** UI-only selection; not part of daemon state. */
   selectedFrontId: string | null;
@@ -53,6 +55,7 @@ export const setSender = (fn: typeof sender) => (sender = fn);
 export const useStore = create<ClientStore>((set, get) => ({
   war: emptyState(),
   connection: "connecting",
+  synced: false,
   toast: null,
   selectedFrontId: null,
   selectedUnitId: null,
@@ -77,7 +80,7 @@ export const useStore = create<ClientStore>((set, get) => ({
     if (selectedFrontId && !war.fronts[selectedFrontId]) selectedFrontId = null;
     if (selectedUnitId && !war.units[selectedUnitId]) selectedUnitId = null;
     const reportFor = prev.reportFor && war.fronts[prev.reportFor] ? prev.reportFor : null;
-    set({ war, selectedFrontId, selectedUnitId, deployingOn, reportFor });
+    set({ war, selectedFrontId, selectedUnitId, deployingOn, reportFor, ...(ev.type === "state.snapshot" ? { synced: true } : {}) });
     if (ev.type === "unit.tool") emitTool(ev.unitId);
     const note = shippingNote(prev.war, ev);
     if (note) get().showToast(note);
@@ -86,7 +89,7 @@ export const useStore = create<ClientStore>((set, get) => ({
       get().showToast(ev.message);
     }
   },
-  setConnection: (connection) => set({ connection }),
+  setConnection: (connection) => set(connection === "open" ? { connection } : { connection, synced: false }),
   send: (cmd) => {
     const ok = sender?.(cmd) ?? false;
     if (!ok) get().showToast("Not connected to the daemon");

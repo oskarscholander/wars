@@ -11,6 +11,7 @@ export const testFront = (id = "f1"): Front => ({
   head: "abc",
   locked: false,
   prunable: false,
+  createdAt: null,
   tests: emptyTests(),
   pr: null,
 });

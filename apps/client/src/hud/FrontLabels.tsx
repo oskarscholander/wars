@@ -12,7 +12,13 @@ export function FrontLabels() {
   return (
     <div className="layer">
       {fronts.map((f) => (
-        <div key={f.id} className="anchor" ref={overlayRef(frontAnchor(f.id))}>
+        <div
+          key={f.id}
+          className="anchor"
+          data-declutter
+          {...(f.id === selectedFrontId ? { "data-priority": "" } : {})}
+          ref={overlayRef(frontAnchor(f.id))}
+        >
           <button
             className="flabel"
             aria-pressed={f.id === selectedFrontId}
