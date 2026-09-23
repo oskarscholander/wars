@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
+import { execa } from "execa";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { UNIT_MODELS, type UnitModel } from "@ww/shared";
@@ -62,4 +63,16 @@ export async function loadConfig(path = process.env.WW_CONFIG ?? DEFAULT_CONFIG_
     if (err instanceof ConfigError) throw new ConfigError(`${path}: ${err.message}`);
     throw new ConfigError(`${path}: invalid JSON`);
   }
+}
+
+/** Fails fast, in plain words, when repoPath is not a git repository. */
+export async function checkRepo(config: Config, configPath = process.env.WW_CONFIG ?? DEFAULT_CONFIG_PATH): Promise<void> {
+  const fix = `Set "repoPath" in ${configPath} to the absolute path of a git repository.`;
+  if (config.repoPath === "/absolute/path/to/target/repo") {
+    throw new ConfigError(`repoPath is still the example placeholder. ${fix}`);
+  }
+  const isDir = await stat(config.repoPath).then((s) => s.isDirectory(), () => false);
+  if (!isDir) throw new ConfigError(`repoPath ${config.repoPath} does not exist. ${fix}`);
+  const r = await execa("git", ["-C", config.repoPath, "rev-parse", "--git-dir"], { reject: false });
+  if (r.exitCode !== 0) throw new ConfigError(`repoPath ${config.repoPath} is not a git repository. ${fix}`);
 }

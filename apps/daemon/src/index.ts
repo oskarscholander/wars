@@ -1,5 +1,5 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { ConfigError, loadConfig } from "./config.ts";
+import { checkRepo, ConfigError, loadConfig } from "./config.ts";
 import { Db } from "./db.ts";
 import { Diffs } from "./diffs.ts";
 import { Shipping } from "./shipping/shipping.ts";
@@ -12,6 +12,7 @@ import { PermissionQueue } from "./units/permissions.ts";
 
 async function main() {
   const config = await loadConfig();
+  await checkRepo(config);
   const token = await ensureToken();
   const store = new Store();
   const discovery = new Discovery({ repoPath: config.repoPath, store });
@@ -61,6 +62,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err instanceof ConfigError ? err.message : err);
+  console.error(err instanceof ConfigError ? `worktree-wars: ${err.message}` : err);
   process.exit(1);
 });
