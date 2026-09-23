@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { emitTool } from "./events.ts";
 import { applyEvent, emptyState, type ClientCommand, type ServerEvent, type UnitModel, type WarState } from "@ww/shared";
 
 export type ConnectionStatus = "connecting" | "open" | "offline";
@@ -69,6 +70,7 @@ export const useStore = create<ClientStore>((set, get) => ({
     if (selectedUnitId && !war.units[selectedUnitId]) selectedUnitId = null;
     const reportFor = prev.reportFor && war.fronts[prev.reportFor] ? prev.reportFor : null;
     set({ war, selectedFrontId, selectedUnitId, deployingOn, reportFor });
+    if (ev.type === "unit.tool") emitTool(ev.unitId);
     if (ev.type === "error") {
       if (ev.command === "unit.create") set({ deployingOn: null });
       get().showToast(ev.message);

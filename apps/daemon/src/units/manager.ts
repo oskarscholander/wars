@@ -115,7 +115,8 @@ export class UnitManager {
       let text: string | undefined;
       while ((text = queue.shift()) !== undefined) {
         if (!store.state.units[unitId]) break;
-        this.#patch(unitId, { queuedOrders: queue.length, status: "working" });
+        // A fresh order clears the bubble so the last turn's reply doesn't linger beside "working".
+        this.#patch(unitId, { queuedOrders: queue.length, status: "working", replyId: null, reply: "" });
         ok = await this.#turn(unitId, text);
       }
     } finally {

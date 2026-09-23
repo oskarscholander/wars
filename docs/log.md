@@ -105,3 +105,34 @@ In Scout 2's report, `NOTE.txt` showed `+hi`. I tapped the line and the radio
 read `On NOTE.txt:1: `. I added "replace hi with hello", Scout 2 asked to Edit
 `NOTE.txt`, I allowed it, and it replied "Done.". The report then showed
 `+hello` and the file on disk said `hello`.
+
+## Milestone 5: The world (2026-09-23)
+
+**What works**
+
+- Islands are ported from the prototype as pure functions in
+  `world/terrain.ts`: an irregular coastline, a noise height field with hills
+  that flatten along the road, and vertex colours for wet sand, beach, road,
+  shaded grass and rock tops. Off the coast the floor drops below the seabed, so
+  the square terrain edge never shows through the water and a soft sandy shelf
+  is left instead. Everything is seeded from the branch name, so an island
+  looks the same on every reload.
+- Trees (pines and round), rocks, the HQ tent, the objective flag (red, gold
+  once a PR is open, team colour once merged, cloth waving) and the bunker. The
+  bunker stands on the road while tests fail and sinks and greys out, with a
+  puff, when they pass.
+- Units follow the terrain along the Catmull-Rom road, face the flag and march
+  in from HQ. While working they bob and show a yellow beacon. Waiting units show
+  a red beacon. Each tool call fires a volley of tracers ahead, or at the bunker
+  when they're pinned in front of it, and each tracer ends in a puff of smoke.
+- The camera frames all islands, an island you tap, or a unit's island, and
+  keeps your orbit angle. Drag orbits, and wheel or pinch zooms.
+- Reduced motion: no tracers, bobbing, pulsing or waving, the camera and units
+  snap, and the bunker disappears instead of sinking.
+
+**Demo**
+
+Screenshots at 1280×800 and 390×844 compared against the prototype: organic
+islands with roads, trees and rocks side by side (stacked on portrait). A working
+Haiku scout showed its yellow beacon and tracer smoke. With emulated
+`prefers-reduced-motion` the page rendered with no errors.

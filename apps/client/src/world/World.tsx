@@ -8,6 +8,7 @@ import { Island } from "./Island.tsx";
 import { ISLAND_HALF, islandPositions } from "./layout.ts";
 import { COLORS } from "./look.ts";
 import { OverlayProjector } from "./OverlayProjector.tsx";
+import { FxLayer } from "./Fx.tsx";
 
 function Scene() {
   const war = useStore((s) => s.war);
@@ -72,6 +73,7 @@ function Scene() {
         />
       ))}
 
+      <FxLayer />
       <CameraRig focus={focus} />
       <OverlayProjector />
     </>
