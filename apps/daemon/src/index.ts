@@ -33,6 +33,7 @@ async function main() {
     // Refreshing the diff after each turn also gives the unit its files-changed count.
     changedFiles: async (front) => (await diffs.refresh(front.id)).length,
     ...(config.anthropicApiKey ? { anthropicApiKey: config.anthropicApiKey } : {}),
+    defaultPermissionMode: config.permissionMode,
     log: console.log,
   });
 

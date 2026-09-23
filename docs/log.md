@@ -312,3 +312,37 @@ spacing guarantees and stable positions.
 - Measured in the browser via a dev-only hook: 40 samples over 20 s with three
   units near the flag and up to three enemies. No agent was ever off land, and
   the closest enemy stayed 7.8 away.
+
+## Auto permissions, PR link, camera, spacing, links (2026-09-23)
+
+- **Auto mode by default.** Every unit runs with the SDK's `permissionMode:
+  "auto"`: Claude Code's classifier approves safe actions itself and only
+  escalates the rest to the permission queue (Allow/Deny as before).
+  - Existing units migrate to auto.
+  - The panel has an Auto/Ask switch per unit.
+  - `permissionMode` in the config sets the default; "bypassPermissions" is
+    not allowed.
+  - Verified with real sessions: Sonnet and Opus report `auto` and wrote a file
+    without asking.
+  - Haiku reports `default` (auto isn't available for it), so the unit records
+    `activePermissionMode` and the panel says it asks instead.
+- **Open the PR from the island.** A selected island with a PR shows
+  "Open PR #n ↗" (or Merged/Closed) in the panel.
+- **Camera never zooms out on island clicks.**
+  - It moves only on explicit requests.
+  - Picking another island (chip, label, click, toast or unit) pans there and
+    zooms in only if needed.
+  - Clicking the already selected island or the water leaves the camera alone.
+  - Only All fronts zooms out.
+  - Drags no longer count as clicks.
+  - Measured: zoomed to 12, the distance stayed 12 after clicking the same
+    island, its label and another island.
+- **Closer islands.** Same repo at least 27 apart, other repos 36, less slack
+  and stretch.
+- **No vehicle overlap.** Separation uses body radii (tank 1.4, scout 1.0,
+  squad 0.9, enemy 0.45), and units pick distinct formation spots when
+  their road slots snap to the same patch of land. Measured three units
+  parked at the flag: all pairs at or beyond their combined radii.
+- **Links in bubbles.** Bare http(s) URLs and markdown links open in a new
+  tab. Other schemes are never linked, and trailing punctuation stays
+  outside the link.

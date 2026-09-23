@@ -4,7 +4,7 @@ import { TurnMapper } from "./mapMessage.ts";
 
 describe("TurnMapper", () => {
   it("captures the session id from init", () => {
-    expect(new TurnMapper().map(init("s1"))).toEqual([{ kind: "session", sessionId: "s1" }]);
+    expect(new TurnMapper().map(init("s1", "default"))).toEqual([{ kind: "session", sessionId: "s1", permissionMode: "default" }]);
   });
 
   it("streams text deltas and skips the repeated full text", () => {

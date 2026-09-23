@@ -3,7 +3,7 @@ import { ConfigError, parseConfig } from "./config.ts";
 
 describe("parseConfig", () => {
   it("works with no settings at all", () => {
-    expect(parseConfig({})).toEqual({ defaultModel: "sonnet", port: 4477 });
+    expect(parseConfig({})).toEqual({ defaultModel: "sonnet", permissionMode: "auto", port: 4477 });
   });
 
   it("ignores the example placeholder repoPath", () => {
@@ -21,6 +21,7 @@ describe("parseConfig", () => {
     expect(() => parseConfig({ testCommand: "pnpm test" })).toThrow(ConfigError);
     expect(() => parseConfig({ defaultModel: "gpt" })).toThrow(ConfigError);
     expect(() => parseConfig({ port: 0 })).toThrow(ConfigError);
+    expect(() => parseConfig({ permissionMode: "bypassPermissions" })).toThrow(ConfigError);
     expect(() => parseConfig({ scanDirs: "~/code" })).toThrow(ConfigError);
   });
 });

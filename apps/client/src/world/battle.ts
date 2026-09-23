@@ -5,6 +5,10 @@ import type { Mover, NavGrid, Point } from "./nav.ts";
 export interface Combatant {
   /** Live position (shared with the unit's mover, so separation can nudge it). */
   pos: Point;
+  /** Body radius: vehicles take more room than soldiers. */
+  r: number;
+  /** Its formation spot, so other units pick different ones. */
+  home: Point | null;
   y: number;
   /** Road curve parameter nearest the unit. */
   s: number;
@@ -104,6 +108,15 @@ export class Battle {
     let d = Infinity;
     for (const e of this.enemies) if (alive(e)) d = Math.min(d, Math.sqrt(dist2(e.mover.pos, p)));
     return d;
+  }
+
+  /** True when `p` is at least `r` + their radius from every other unit's formation spot. */
+  homeIsFree(unitId: string, p: Point, r: number): boolean {
+    for (const [id, u] of this.units) {
+      if (id === unitId || !u.home) continue;
+      if (Math.sqrt(dist2(u.home, p)) < r + u.r) return false;
+    }
+    return true;
   }
 
   /** Marks an enemy to fall when the tracer aimed at it lands. */

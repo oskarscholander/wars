@@ -295,15 +295,22 @@ export class Mover {
   }
 }
 
+/** Something that takes up room: a live position and a body radius. */
+export interface Body {
+  pos: Point;
+  r: number;
+}
+
 /**
- * Pushes agents apart when they get closer than `minDist`, but never onto
- * unwalkable ground. Cheap O(n²); islands hold a dozen agents at most.
+ * Pushes bodies apart when they overlap (closer than the sum of their radii),
+ * but never onto unwalkable ground. Cheap O(n²); islands hold a dozen agents at most.
  */
-export function separate(nav: NavGrid, agents: Point[], minDist = 1.1): void {
-  for (let i = 0; i < agents.length; i++) {
-    for (let j = i + 1; j < agents.length; j++) {
-      const a = agents[i]!;
-      const b = agents[j]!;
+export function separate(nav: NavGrid, bodies: Body[]): void {
+  for (let i = 0; i < bodies.length; i++) {
+    for (let j = i + 1; j < bodies.length; j++) {
+      const a = bodies[i]!.pos;
+      const b = bodies[j]!.pos;
+      const minDist = bodies[i]!.r + bodies[j]!.r;
       const dx = b.x - a.x;
       const dz = b.z - a.z;
       const d = Math.hypot(dx, dz) || 0.001;

@@ -4,7 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import { Battle, headingTo, lerpAngle, type Enemy } from "./battle.ts";
 import { fx } from "./Fx.tsx";
 import { toWorld, type Placement } from "./layout.ts";
-import { Mover, separate, type Point } from "./nav.ts";
+import { Mover, separate, type Body, type Point } from "./nav.ts";
 import type { IslandShape } from "./terrain.ts";
 
 const MAX_ENEMIES = 8;
@@ -232,10 +232,10 @@ export function EnemyForce({ battle, shape, place, bunker, reduced }: Props) {
     }
     battle.enemies = keep;
 
-    // Keep everyone from standing inside each other.
-    const agents: Point[] = [...battle.units.values()].map((u) => u.pos);
-    for (const e of keep) if (e.state === "arriving" || e.state === "fighting") agents.push(e.mover.pos);
-    separate(nav, agents, 1.2);
+    // Keep everyone from standing inside each other; vehicles need more room than soldiers.
+    const bodies: Body[] = [...battle.units.values()].map((u) => ({ pos: u.pos, r: u.r }));
+    for (const e of keep) if (e.state === "arriving" || e.state === "fighting") bodies.push({ pos: e.mover.pos, r: 0.45 });
+    separate(nav, bodies);
   });
 
   return <group ref={group} />;

@@ -72,10 +72,23 @@ describe("Mover and separation", () => {
     expect(m.moving).toBe(false);
   });
 
+  it("keeps big bodies further apart than small ones", () => {
+    const tank = { x: 5, z: 0 };
+    const scout = { x: 5.5, z: 0 };
+    separate(nav, [
+      { pos: tank, r: 1.25 },
+      { pos: scout, r: 0.95 },
+    ]);
+    expect(Math.hypot(scout.x - tank.x, scout.z - tank.z)).toBeCloseTo(2.2);
+  });
+
   it("pushes overlapping agents apart without leaving land", () => {
     const a = { x: 6, z: 0 };
     const b = { x: 6.2, z: 0 };
-    separate(nav, [a, b], 1);
+    separate(nav, [
+      { pos: a, r: 0.5 },
+      { pos: b, r: 0.5 },
+    ]);
     expect(Math.hypot(b.x - a.x, b.z - a.z)).toBeCloseTo(1);
     expect(nav.walkable(a.x, a.z) && nav.walkable(b.x, b.z)).toBe(true);
   });

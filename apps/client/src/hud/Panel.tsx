@@ -10,6 +10,46 @@ const DEFAULT_NAME: Record<UnitModel, string> = { opus: "Tank", sonnet: "Squad",
 
 const fmtTokens = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
 
+/** Auto: Claude Code's classifier approves safe actions and escalates the rest. Ask: every change asks you. */
+function PermissionSwitch({ unit, online }: { unit: Unit; online: boolean }) {
+  const send = useStore((s) => s.send);
+  const set = (permissionMode: Unit["permissionMode"]) =>
+    unit.permissionMode !== permissionMode && send({ type: "unit.update", unitId: unit.id, permissionMode });
+  return (
+    <div className="seg" role="radiogroup" aria-label="Permissions">
+      <button
+        role="radio"
+        aria-checked={unit.permissionMode === "auto"}
+        disabled={!online}
+        onClick={() => set("auto")}
+        title="Claude Code approves safe actions itself and asks you about the rest"
+      >
+        Auto
+      </button>
+      <button
+        role="radio"
+        aria-checked={unit.permissionMode === "default"}
+        disabled={!online}
+        onClick={() => set("default")}
+        title="Ask me before every change"
+      >
+        Ask
+      </button>
+    </div>
+  );
+}
+
+/** One tap to the island's PR on GitHub. */
+function PrLink({ front }: { front: Front }) {
+  if (!front.pr) return null;
+  const label = front.pr.state === "open" ? "Open" : front.pr.state === "merged" ? "Merged" : "Closed";
+  return (
+    <a className={`prlink ${front.pr.state}`} href={front.pr.url} target="_blank" rel="noopener noreferrer">
+      {label} PR #{front.pr.number} ↗
+    </a>
+  );
+}
+
 function UnitHeader({ unit, front }: { unit: Unit; front: Front }) {
   return (
     <div className="unit">
@@ -134,7 +174,6 @@ export function Panel() {
         </div>
         <div className="stats">
           <TestsStat front={front} />
-          {front.pr && <span>PR #{front.pr.number} {front.pr.state}</span>}
           {formatAge(front.createdAt, now) && <span>{formatAge(front.createdAt, now)}</span>}
           <span>{front.head.slice(0, 7)}</span>
           {front.locked && <span>locked</span>}
@@ -168,8 +207,10 @@ export function Panel() {
       {header}
 
       <div className="hints">
+        {front && <PrLink front={front} />}
         {unit && (
           <>
+            <PermissionSwitch unit={unit} online={online} />
             <button disabled={!online} onClick={() => openReport(unit.frontId)}>
               Field report
             </button>
@@ -216,6 +257,10 @@ export function Panel() {
             ))}
           </div>
         </div>
+      )}
+
+      {unit?.permissionMode === "auto" && unit.activePermissionMode && unit.activePermissionMode !== "auto" && (
+        <p className="mode-note">Auto isn't available for {UNIT_KIND[unit.model].split(" · ")[0]}, so this unit asks before changes.</p>
       )}
 
       <form className="say" onSubmit={submit} autoComplete="off">

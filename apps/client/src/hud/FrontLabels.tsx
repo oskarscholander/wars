@@ -22,7 +22,7 @@ export function FrontLabels() {
           <button
             className="flabel"
             aria-pressed={f.id === selectedFrontId}
-            onClick={() => selectFront(f.id === selectedFrontId ? null : f.id)}
+            onClick={() => selectFront(f.id)}
           >
             {frontTitle(war, f)}
           </button>

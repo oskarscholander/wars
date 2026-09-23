@@ -100,7 +100,10 @@ async function dispatch(cmd: ClientCommand, deps: Deps): Promise<ServerEvent | v
       };
     }
     case "unit.create":
-      deps.units.create(cmd.frontId, cmd.model, cmd.name);
+      deps.units.create(cmd.frontId, cmd.model, cmd.name, cmd.permissionMode);
+      return;
+    case "unit.update":
+      deps.units.setPermissionMode(cmd.unitId, cmd.permissionMode);
       return;
     case "unit.order":
       deps.units.order(cmd.unitId, cmd.text);

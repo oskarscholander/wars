@@ -10,9 +10,9 @@ export interface Placement {
 /** Radius of one island's footprint (coast plus beach shelf), in world units. */
 export const ISLAND_RADIUS = 15;
 /** Closest two island centres may be; each pair gets a little extra seeded slack. */
-const MIN_GAP = 31;
+const MIN_GAP = 27;
 /** Closest two islands of different repos may be, so archipelagos read as separate. */
-const REPO_GAP = 45;
+const REPO_GAP = 36;
 
 export interface IslandGroup {
   key: string;
@@ -56,7 +56,7 @@ export function scatterIslands(groups: IslandGroup[], portrait: boolean): Map<st
     const placed: (Point & { id: string; yaw: number })[] = [];
     for (const id of g.ids) {
       const fits = (p: Point, extra: number) => placed.every((q) => Math.hypot(p.x - q.x, p.z - q.z) >= MIN_GAP + extra);
-      const spot = findSpot(fits, `island:${id}`, 6, !placed.length);
+      const spot = findSpot(fits, `island:${id}`, 3, !placed.length);
       const yaw = (mulberry32(hashString(`yaw:${id}`))() - 0.5) * 1.1;
       placed.push({ ...spot, id, yaw });
     }
@@ -71,13 +71,13 @@ export function scatterIslands(groups: IslandGroup[], portrait: boolean): Map<st
   for (const c of clusters) {
     const fits = (at: Point, extra: number) =>
       c.members.every((m) => taken.every((q) => Math.hypot(at.x + m.x - q.x, at.z + m.z - q.z) >= REPO_GAP + extra));
-    const at = findSpot(fits, `cluster:${c.key}`, 10, !taken.length);
+    const at = findSpot(fits, `cluster:${c.key}`, 6, !taken.length);
     for (const m of c.members) taken.push({ x: at.x + m.x, z: at.z + m.z });
     for (const m of c.members) {
       const x = at.x + m.x;
       const z = at.z + m.z;
       // Stretch only: distances never shrink, so islands never overlap.
-      out.set(m.id, { x: portrait ? x : x * 1.25, z: portrait ? z * 1.25 : z, yaw: m.yaw });
+      out.set(m.id, { x: portrait ? x : x * 1.1, z: portrait ? z * 1.1 : z, yaw: m.yaw });
     }
   }
   return out;

@@ -152,7 +152,7 @@ export function Island({ front, units, place, selectedUnitId, reduced, onSelect,
         castShadow
         onClick={(e) => {
           e.stopPropagation();
-          onSelect();
+          if (e.delta < 5) onSelect(); // a drag to orbit is not a click
         }}
       >
         <meshStandardMaterial vertexColors roughness={0.95} flatShading />

@@ -10,6 +10,7 @@ import { laneFor, roadS } from "./road.ts";
 import { toWorld, type Placement } from "./layout.ts";
 import type { IslandShape } from "./terrain.ts";
 import { Mover, type Point } from "./nav.ts";
+import { hashString, mulberry32 } from "./seed.ts";
 import type { UnitModel } from "@ww/shared";
 import { UnitBody } from "./UnitModels.tsx";
 
@@ -31,6 +32,8 @@ interface Props {
 const BEACON = { working: "#ffd24a", waiting: "#ff5a3c" } as const;
 /** Ground speed in island units per second. */
 const SPEED: Record<UnitModel, number> = { opus: 1.7, sonnet: 1.5, haiku: 2.6 };
+/** Body radius: a tank takes more room than a squad. */
+const RADIUS: Record<UnitModel, number> = { opus: 1.4, sonnet: 0.9, haiku: 1.0 };
 const BURST_MS = 1600;
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 
@@ -115,7 +118,12 @@ export function UnitView({ unit, front, shape, battle, place, index, count, team
     let s = roadS(current.current);
     if (bunkerUp) s = Math.min(s, bunkerS);
     const road = shape.roadPoint(s, lane);
-    const spot = nav.nearestWalkable(road, 6) ?? road;
+    const r = RADIUS[unit.model];
+    // Formation spot: nearest land to the road slot, moved aside (deterministically) if another unit holds it.
+    const near = nav.nearestWalkable(road, 6) ?? road;
+    const spot = battle.homeIsFree(unit.id, near, r)
+      ? near
+      : (nav.randomNear(near, 0.5, 5, mulberry32(hashString(unit.id)), (q) => battle.homeIsFree(unit.id, q, r), 80) ?? near);
 
     // First frame: march in from HQ (or appear in place with reduced motion).
     if (!mover.current) {
@@ -163,8 +171,9 @@ export function UnitView({ unit, front, shape, battle, place, index, count, team
       existing.y = y;
       existing.s = shape.nearestS(p.x, p.z);
       existing.working = working;
+      existing.home = home.current;
     } else {
-      battle.units.set(unit.id, { pos: m.pos, y, s: shape.nearestS(p.x, p.z), working });
+      battle.units.set(unit.id, { pos: m.pos, r, home: home.current, y, s: shape.nearestS(p.x, p.z), working });
     }
 
     const t = clock.elapsedTime;
@@ -187,7 +196,7 @@ export function UnitView({ unit, front, shape, battle, place, index, count, team
       ref={group}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect();
+        if (e.delta < 5) onSelect();
       }}
     >
       <group ref={body}>

@@ -3,7 +3,8 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 /** Minimal SDK message shapes for tests. Only the fields the mapper reads. */
 const m = (x: unknown) => x as SDKMessage;
 
-export const init = (sessionId: string) => m({ type: "system", subtype: "init", session_id: sessionId });
+export const init = (sessionId: string, permissionMode = "auto") =>
+  m({ type: "system", subtype: "init", session_id: sessionId, permissionMode });
 export const messageStart = (id: string) =>
   m({ type: "stream_event", parent_tool_use_id: null, event: { type: "message_start", message: { id } } });
 export const textStart = () =>

@@ -3,6 +3,14 @@ export const UNIT_MODELS: readonly UnitModel[] = ["opus", "sonnet", "haiku"];
 
 export type UnitStatus = "idle" | "working" | "waiting" | "error";
 
+/**
+ * How a unit's tool use is approved. `auto`: Claude Code's classifier approves
+ * safe actions and escalates the rest to you; `default`: every non-read-only
+ * tool asks you.
+ */
+export type PermissionMode = "auto" | "default";
+export const PERMISSION_MODES: readonly PermissionMode[] = ["auto", "default"];
+
 export interface TestsState {
   status: "unknown" | "running" | "passed" | "failed";
   passed: number;
@@ -58,6 +66,12 @@ export interface Unit {
   name: string;
   model: UnitModel;
   status: UnitStatus;
+  permissionMode: PermissionMode;
+  /**
+   * The mode Claude Code actually ran the last session in. Differs from
+   * `permissionMode` when auto isn't available (e.g. for Haiku). Null until a session starts.
+   */
+  activePermissionMode: string | null;
   sessionId: string | null;
   turns: number;
   filesChanged: number;

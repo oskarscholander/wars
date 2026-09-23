@@ -12,8 +12,8 @@ import { FxLayer } from "./Fx.tsx";
 
 function Scene() {
   const war = useStore((s) => s.war);
-  const selectedFrontId = useStore((s) => s.selectedFrontId);
   const selectFront = useStore((s) => s.selectFront);
+  const clearSelection = useStore((s) => s.clearSelection);
   const selectedUnitId = useStore((s) => s.selectedUnitId);
   const selectUnit = useStore((s) => s.selectUnit);
   const reduced = useReducedMotion();
@@ -37,22 +37,6 @@ function Scene() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- recompute only when membership or order changes
   const places = useMemo(() => scatterIslands(groups, portrait), [groupKey, portrait]);
 
-  const focus = useMemo(() => {
-    const box = new THREE.Box3();
-    const add = (p: Placement) =>
-      box.union(
-        new THREE.Box3(
-          new THREE.Vector3(p.x - ISLAND_RADIUS, 0, p.z - ISLAND_RADIUS),
-          new THREE.Vector3(p.x + ISLAND_RADIUS, 3, p.z + ISLAND_RADIUS),
-        ),
-      );
-    const selected = selectedFrontId ? places.get(selectedFrontId) : undefined;
-    if (selected) add(selected);
-    else if (places.size) places.forEach(add);
-    else add({ x: 0, z: 0, yaw: 0 });
-    return box;
-  }, [places, selectedFrontId]);
-
   return (
     <>
       <color attach="background" args={[COLORS.sky]} />
@@ -70,7 +54,13 @@ function Scene() {
         shadow-camera-bottom={-80}
       />
 
-      <mesh rotation-x={-Math.PI / 2} receiveShadow onClick={() => selectFront(null)}>
+      <mesh
+        rotation-x={-Math.PI / 2}
+        receiveShadow
+        onClick={(e) => {
+          if (e.delta < 5) clearSelection(); // a drag to orbit is not a click
+        }}
+      >
         <planeGeometry args={[600, 600]} />
         <meshStandardMaterial color={COLORS.water} roughness={0.35} metalness={0.1} transparent opacity={0.86} />
       </mesh>
@@ -88,12 +78,12 @@ function Scene() {
           selectedUnitId={selectedUnitId}
           reduced={reduced}
           onSelectUnit={selectUnit}
-          onSelect={() => selectFront(f.id === selectedFrontId && !selectedUnitId ? null : f.id)}
+          onSelect={() => selectFront(f.id)}
         />
       ))}
 
       <FxLayer />
-      <CameraRig focus={focus} />
+      <CameraRig places={places} />
       <OverlayProjector />
     </>
   );
@@ -102,20 +92,40 @@ function Scene() {
 const DEFAULT_POLAR = 0.8;
 const TOP_BAR_PX = 64;
 
+const islandBox = (p: Placement) =>
+  new THREE.Box3(
+    new THREE.Vector3(p.x - ISLAND_RADIUS, 0, p.z - ISLAND_RADIUS),
+    new THREE.Vector3(p.x + ISLAND_RADIUS, 3, p.z + ISLAND_RADIUS),
+  );
+
 /**
- * Frames the focused box between the top bar and the bottom panel, keeping the
- * user's current orbit angles. (camera-controls' fitToBox snaps angles to 90°.)
+ * Moves the camera only when asked (the store's `camera.tick`), keeping the
+ * user's orbit angles. The overview frames every island; going to an island
+ * pans there and zooms in if needed, but never zooms out from a closer view.
+ * (camera-controls' fitToBox snaps angles to 90°, so framing is done by hand.)
  */
-function CameraRig({ focus }: { focus: THREE.Box3 }) {
+function CameraRig({ places }: { places: Map<string, Placement> }) {
   const ref = useRef<CameraControls>(null);
   const reduced = useReducedMotion();
   const first = useRef(true);
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
   const size = useThree((s) => s.size);
+  const goal = useStore((s) => s.camera);
+  const hasIslands = places.size > 0;
+  const placesRef = useRef(places);
+  placesRef.current = places;
 
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
+    // The very first framing waits for the islands to arrive.
+    if (first.current && !hasIslands) return;
+    const focus = new THREE.Box3();
+    const dest = goal.kind === "front" && goal.frontId ? placesRef.current.get(goal.frontId) : undefined;
+    if (dest) focus.union(islandBox(dest));
+    else if (goal.kind === "overview" || first.current) placesRef.current.forEach((p) => focus.union(islandBox(p)));
+    if (focus.isEmpty()) return;
+    const zoomIn = !!dest && !first.current;
     const polar = first.current ? DEFAULT_POLAR : c.polarAngle;
     const azimuth = first.current ? 0 : c.azimuthAngle;
     const animate = !reduced && !first.current;
@@ -131,7 +141,8 @@ function CameraRig({ focus }: { focus: THREE.Box3 }) {
     const across = Math.abs(ext.x * Math.cos(azimuth)) + Math.abs(ext.z * Math.sin(azimuth));
     const along = Math.abs(ext.x * Math.sin(azimuth)) + Math.abs(ext.z * Math.cos(azimuth));
     const tall = along * Math.cos(polar) + ext.y * Math.sin(polar);
-    const dist = Math.max(across / 2 / (tanV * aspect), tall / 2 / (tanV * usable)) * 1.15;
+    const fit = Math.max(across / 2 / (tanV * aspect), tall / 2 / (tanV * usable)) * 1.15;
+    const dist = zoomIn ? Math.min(c.distance, fit) : fit;
 
     // Move the target toward the camera so content centres in the usable band.
     const worldPerPx = (2 * dist * tanV) / size.height;
@@ -141,7 +152,13 @@ function CameraRig({ focus }: { focus: THREE.Box3 }) {
     const pos = new THREE.Vector3().setFromSphericalCoords(dist, polar, azimuth).add(target);
 
     void c.setLookAt(pos.x, pos.y, pos.z, target.x, target.y, target.z, animate);
-  }, [focus, reduced, camera, size]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- move only on explicit requests (tick) or first islands
+  }, [goal.tick, hasIslands]);
+
+  // Dev-only hook so browser tests can read the camera distance.
+  useEffect(() => {
+    if (import.meta.env.DEV) (window as unknown as { __wwCamera?: CameraControls | null }).__wwCamera = ref.current;
+  });
 
   // Keep fog relative to how far out we are, so a wide overview is not swallowed.
   useFrame(({ scene }) => {

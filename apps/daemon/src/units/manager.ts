@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { Front, Unit, UnitModel } from "@ww/shared";
+import type { Front, PermissionMode, Unit, UnitModel } from "@ww/shared";
 import type { Db } from "../db.ts";
 import type { Store } from "../store.ts";
 import { TurnMapper, type Effect } from "./mapMessage.ts";
@@ -16,6 +16,8 @@ export interface UnitManagerDeps {
   changedFiles: (front: Front) => Promise<number>;
   /** Optional passthrough; by default the SDK uses the user's `claude login`. */
   anthropicApiKey?: string;
+  /** Permission mode for new units. Defaults to auto. */
+  defaultPermissionMode?: PermissionMode;
   log?: (msg: string) => void;
 }
 
@@ -54,7 +56,7 @@ export class UnitManager {
     for (const id of Object.keys(deps.store.state.fronts)) this.#loadFront(id);
   }
 
-  create(frontId: string, model: UnitModel, name: string): Unit {
+  create(frontId: string, model: UnitModel, name: string, permissionMode?: PermissionMode): Unit {
     const { store, db } = this.#deps;
     if (!store.state.fronts[frontId]) throw new UnitError("That front no longer exists");
     const unit: Unit = {
@@ -63,6 +65,8 @@ export class UnitManager {
       name: name.trim().slice(0, 80) || "Unit",
       model,
       status: "idle",
+      activePermissionMode: null,
+      permissionMode: permissionMode ?? this.#deps.defaultPermissionMode ?? "auto",
       sessionId: null,
       turns: 0,
       filesChanged: 0,
@@ -91,6 +95,12 @@ export class UnitManager {
     }
   }
 
+  /** Changes how a unit's tool use is approved; takes effect from its next order. */
+  setPermissionMode(unitId: string, permissionMode: PermissionMode): void {
+    if (!this.#deps.store.state.units[unitId]) throw new UnitError("That unit no longer exists");
+    this.#patch(unitId, { permissionMode, activePermissionMode: null });
+  }
+
   /** Stops a front's units before its worktree is deleted: aborts queries, drops queued orders. */
   stopFront(frontId: string): void {
     for (const unit of Object.values(this.#deps.store.state.units)) {
@@ -112,7 +122,7 @@ export class UnitManager {
     this.#loadedFronts.add(frontId);
     for (const stored of db.unitsForFront(frontId)) {
       if (store.state.units[stored.id]) continue;
-      store.emit({ type: "unit.upserted", unit: { ...stored, status: "idle", queuedOrders: 0 } });
+      store.emit({ type: "unit.upserted", unit: { ...stored, status: "idle", queuedOrders: 0, activePermissionMode: null } });
     }
   }
 
@@ -154,6 +164,8 @@ export class UnitManager {
         options: {
           cwd: front.path,
           model: unit.model,
+          // Auto: the classifier approves safe actions itself and only escalates the rest to canUseTool.
+          permissionMode: unit.permissionMode,
           ...(unit.sessionId ? { resume: unit.sessionId } : {}),
           includePartialMessages: true,
           abortController: ac,
@@ -214,9 +226,13 @@ export class UnitManager {
   #applyEffect(unitId: string, e: Exclude<Effect, ResultEffect>): void {
     const { store } = this.#deps;
     switch (e.kind) {
-      case "session":
-        if (store.state.units[unitId]?.sessionId !== e.sessionId) this.#patch(unitId, { sessionId: e.sessionId });
+      case "session": {
+        const u = store.state.units[unitId];
+        if (u && (u.sessionId !== e.sessionId || u.activePermissionMode !== e.permissionMode)) {
+          this.#patch(unitId, { sessionId: e.sessionId, activePermissionMode: e.permissionMode });
+        }
         return;
+      }
       case "text":
         store.emit({ type: "unit.text", unitId, messageId: e.messageId, delta: e.delta });
         return;

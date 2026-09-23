@@ -24,6 +24,8 @@ const unit = (id: string, frontId: string): Unit => ({
   name: id,
   model: "sonnet",
   status: "idle",
+  permissionMode: "auto",
+  activePermissionMode: null,
   sessionId: null,
   turns: 0,
   filesChanged: 0,

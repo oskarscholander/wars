@@ -2,7 +2,7 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { summarizeTool } from "./summary.ts";
 
 export type Effect =
-  | { kind: "session"; sessionId: string }
+  | { kind: "session"; sessionId: string; permissionMode: string }
   | { kind: "text"; messageId: string; delta: string }
   | { kind: "tool"; tool: string; summary: string }
   | {
@@ -31,7 +31,9 @@ export class TurnMapper {
   map(msg: SDKMessage): Effect[] {
     switch (msg.type) {
       case "system":
-        return msg.subtype === "init" ? [{ kind: "session", sessionId: msg.session_id }] : [];
+        return msg.subtype === "init"
+          ? [{ kind: "session", sessionId: msg.session_id, permissionMode: String(msg.permissionMode) }]
+          : [];
 
       case "stream_event": {
         if (msg.parent_tool_use_id) return [];

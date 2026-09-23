@@ -71,7 +71,7 @@ describe("daemon over WebSocket", () => {
     const db = new Db(":memory:");
     const repos = repoManager(store, db);
     await repos.start();
-    const config = { defaultModel: "sonnet" as const, port: 0 };
+    const config = { defaultModel: "sonnet" as const, permissionMode: "auto" as const, port: 0 };
     const permissions = new PermissionQueue(store);
     const units = new UnitManager({
       store,

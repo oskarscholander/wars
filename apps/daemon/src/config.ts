@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { UNIT_MODELS, type UnitModel } from "@ww/shared";
+import { PERMISSION_MODES, UNIT_MODELS, type PermissionMode, type UnitModel } from "@ww/shared";
 
 export interface Config {
   /** Optional: a repo to monitor on first start. Repos are normally picked in the app. */
@@ -9,6 +9,8 @@ export interface Config {
   /** Fallback when a repo's test command can't be detected. */
   testCommand?: string[];
   defaultModel: UnitModel;
+  /** Permission mode for new units: "auto" (default) or "default" (ask for everything). */
+  permissionMode: PermissionMode;
   port: number;
   /** Folders to scan for repo suggestions. Defaults to ~/Repos, ~/code, ~/src and friends. */
   scanDirs?: string[];
@@ -38,6 +40,10 @@ export function parseConfig(raw: unknown): Config {
   if (!UNIT_MODELS.includes(defaultModel as UnitModel)) {
     throw new ConfigError(`defaultModel must be one of ${UNIT_MODELS.join(", ")}`);
   }
+  const permissionMode = c.permissionMode ?? "auto";
+  if (!PERMISSION_MODES.includes(permissionMode as PermissionMode)) {
+    throw new ConfigError(`permissionMode must be one of ${PERMISSION_MODES.join(", ")}`);
+  }
   const port = c.port ?? 4477;
   if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) {
     throw new ConfigError("port must be an integer between 1 and 65535");
@@ -51,6 +57,7 @@ export function parseConfig(raw: unknown): Config {
     ...(typeof c.repoPath === "string" && c.repoPath !== PLACEHOLDER ? { repoPath: c.repoPath } : {}),
     ...(c.testCommand ? { testCommand: c.testCommand as string[] } : {}),
     defaultModel: defaultModel as UnitModel,
+    permissionMode: permissionMode as PermissionMode,
     port,
     ...(c.scanDirs ? { scanDirs: c.scanDirs as string[] } : {}),
     ...(c.anthropicApiKey ? { anthropicApiKey: c.anthropicApiKey } : {}),

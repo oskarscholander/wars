@@ -1,17 +1,18 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
-import type { TestsState, Unit, UnitModel } from "@ww/shared";
+import type { PermissionMode, TestsState, Unit, UnitModel } from "@ww/shared";
 import { wwHome } from "./token.ts";
 
 /** Fields that survive a daemon restart. Status and queues are runtime-only. */
-export type StoredUnit = Omit<Unit, "status" | "queuedOrders">;
+export type StoredUnit = Omit<Unit, "status" | "queuedOrders" | "activePermissionMode">;
 
 interface Row {
   id: string;
   front_id: string;
   name: string;
   model: string;
+  permission_mode: string;
   session_id: string | null;
   turns: number;
   files_changed: number;
@@ -28,6 +29,7 @@ const toUnit = (r: Row): StoredUnit => ({
   frontId: r.front_id,
   name: r.name,
   model: r.model as UnitModel,
+  permissionMode: (r.permission_mode === "default" ? "default" : "auto") as PermissionMode,
   sessionId: r.session_id,
   turns: r.turns,
   filesChanged: r.files_changed,
@@ -74,6 +76,11 @@ export class Db {
         tests TEXT NOT NULL
       );
     `);
+    // Migration: units created before permission modes existed start in auto.
+    const cols = (this.#db.prepare("PRAGMA table_info(units)").all() as { name: string }[]).map((c) => c.name);
+    if (!cols.includes("permission_mode")) {
+      this.#db.exec("ALTER TABLE units ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'auto'");
+    }
   }
 
   unitsForFront(frontId: string): StoredUnit[] {
@@ -85,10 +92,10 @@ export class Db {
   saveUnit(u: StoredUnit): void {
     this.#db
       .prepare(
-        `INSERT INTO units (id, front_id, name, model, session_id, turns, files_changed, input_tokens, output_tokens, cost_usd, reply_id, reply, created_at)
-         VALUES (@id, @frontId, @name, @model, @sessionId, @turns, @filesChanged, @inputTokens, @outputTokens, @costUsd, @replyId, @reply, @createdAt)
+        `INSERT INTO units (id, front_id, name, model, permission_mode, session_id, turns, files_changed, input_tokens, output_tokens, cost_usd, reply_id, reply, created_at)
+         VALUES (@id, @frontId, @name, @model, @permissionMode, @sessionId, @turns, @filesChanged, @inputTokens, @outputTokens, @costUsd, @replyId, @reply, @createdAt)
          ON CONFLICT(id) DO UPDATE SET
-           name = excluded.name, model = excluded.model, session_id = excluded.session_id, turns = excluded.turns,
+           name = excluded.name, model = excluded.model, permission_mode = excluded.permission_mode, session_id = excluded.session_id, turns = excluded.turns,
            files_changed = excluded.files_changed, input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
            cost_usd = excluded.cost_usd, reply_id = excluded.reply_id, reply = excluded.reply`,
       )
@@ -97,6 +104,7 @@ export class Db {
         frontId: u.frontId,
         name: u.name,
         model: u.model,
+        permissionMode: u.permissionMode,
         sessionId: u.sessionId,
         turns: u.turns,
         filesChanged: u.filesChanged,

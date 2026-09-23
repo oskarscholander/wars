@@ -25,6 +25,12 @@ interface ClientStore {
   /** UI-only selection; not part of daemon state. */
   selectedFrontId: string | null;
   selectedUnitId: string | null;
+  /**
+   * What the camera was last asked to do. It only moves when `tick` changes:
+   * picking a different island pans there (zooming in if needed, never out);
+   * only the All fronts overview zooms out.
+   */
+  camera: { kind: "overview" | "front"; frontId: string | null; tick: number };
   /** Front we just asked to deploy on, so the new unit gets selected when it arrives. */
   deployingOn: string | null;
   /** Text in the radio input. Lives here so the report sheet can prefill it. */
@@ -46,7 +52,10 @@ interface ClientStore {
   send: (cmd: ClientCommand) => boolean;
   showToast: (message: string, extras?: ToastExtras) => void;
   dismissToast: () => void;
+  /** Select an island (null = All fronts overview). */
   selectFront: (id: string | null) => void;
+  /** Deselect without moving the camera (e.g. clicking the water). */
+  clearSelection: () => void;
   selectUnit: (id: string | null) => void;
   deploy: (frontId: string, model: UnitModel, name: string) => void;
   setDraft: (text: string, focus?: boolean) => void;
@@ -72,6 +81,7 @@ export const useStore = create<ClientStore>((set, get) => ({
   toast: null,
   selectedFrontId: null,
   selectedUnitId: null,
+  camera: { kind: "overview", frontId: null, tick: 0 },
   deployingOn: null,
   draft: "",
   focusTick: 0,
@@ -125,10 +135,25 @@ export const useStore = create<ClientStore>((set, get) => ({
   },
   showToast: (message, extras = {}) => set({ toast: { id: ++toastSeq, message, ...extras } }),
   dismissToast: () => set({ toast: null }),
-  selectFront: (selectedFrontId) => set({ selectedFrontId, selectedUnitId: null }),
+  selectFront: (id) => {
+    const { selectedFrontId, camera } = get();
+    if (id !== null && id === selectedFrontId) return set({ selectedUnitId: null }); // already there: don't move
+    set({
+      selectedFrontId: id,
+      selectedUnitId: null,
+      camera: { kind: id ? "front" : "overview", frontId: id, tick: camera.tick + 1 },
+    });
+  },
+  clearSelection: () => set({ selectedFrontId: null, selectedUnitId: null }),
   selectUnit: (id) => {
-    const unit = id ? get().war.units[id] : undefined;
-    set(unit ? { selectedUnitId: unit.id, selectedFrontId: unit.frontId } : { selectedUnitId: null });
+    const { war, selectedFrontId, camera } = get();
+    const unit = id ? war.units[id] : undefined;
+    if (!unit) return set({ selectedUnitId: null });
+    set({
+      selectedUnitId: unit.id,
+      selectedFrontId: unit.frontId,
+      ...(unit.frontId !== selectedFrontId ? { camera: { kind: "front" as const, frontId: unit.frontId, tick: camera.tick + 1 } } : {}),
+    });
   },
   deploy: (frontId, model, name) => {
     if (get().send({ type: "unit.create", frontId, model, name })) set({ deployingOn: frontId });

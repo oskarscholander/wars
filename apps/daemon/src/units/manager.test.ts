@@ -50,7 +50,7 @@ describe("UnitManager", () => {
 
     const after = store.state.units[u.id]!;
     expect(after).toMatchObject({ sessionId: "s1", reply: "On it.", turns: 1, filesChanged: 3, inputTokens: 100, outputTokens: 5 });
-    expect(q.calls[0]?.options).toMatchObject({ cwd: "/tmp/f1", model: "haiku", includePartialMessages: true });
+    expect(q.calls[0]?.options).toMatchObject({ cwd: "/tmp/f1", model: "haiku", includePartialMessages: true, permissionMode: "auto" });
     expect(q.calls[0]?.options.resume).toBeUndefined();
   });
 
@@ -70,6 +70,34 @@ describe("UnitManager", () => {
     await idle(second.store, u.id);
     expect(q2.calls[0]?.options.resume).toBe("s1");
     expect(second.store.state.units[u.id]).toMatchObject({ reply: "Second.", turns: 2 });
+  });
+
+  it("passes the unit's permission mode and lets it be changed", async () => {
+    const q = fakeQuery([reply("s1", "m1", "One."), reply("s1", "m2", "Two.")]);
+    const { store, units } = setup(q.fn);
+    const u = units.create("f1", "sonnet", "Squad", "default");
+    units.order(u.id, "one");
+    await idle(store, u.id);
+    expect(q.calls[0]?.options.permissionMode).toBe("default");
+    units.setPermissionMode(u.id, "auto");
+    units.order(u.id, "two");
+    await idle(store, u.id);
+    expect(q.calls[1]?.options.permissionMode).toBe("auto");
+    expect(store.state.units[u.id]?.activePermissionMode).toBe("auto");
+  });
+
+  it("records when Claude Code falls back from auto (e.g. Haiku)", async () => {
+    const q = fakeQuery([
+      async function* () {
+        yield init("s1", "default");
+        yield result();
+      },
+    ]);
+    const { store, units } = setup(q.fn);
+    const u = units.create("f1", "haiku", "Scout");
+    units.order(u.id, "go");
+    await idle(store, u.id);
+    expect(store.state.units[u.id]).toMatchObject({ permissionMode: "auto", activePermissionMode: "default" });
   });
 
   it("queues orders sent while working and runs them in order", async () => {
@@ -140,7 +168,7 @@ describe("UnitManager", () => {
       },
       reply("s-new", "m1", "Fresh start."),
     ]);
-    db.saveUnit({ id: "u1", frontId: "f1", name: "Old", model: "sonnet", sessionId: "s-old", turns: 4, filesChanged: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, replyId: null, reply: "", createdAt: 1 });
+    db.saveUnit({ id: "u1", frontId: "f1", name: "Old", model: "sonnet", permissionMode: "auto", sessionId: "s-old", turns: 4, filesChanged: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, replyId: null, reply: "", createdAt: 1 });
     const { units } = setup(q.fn, store, db);
     units.order("u1", "hello");
     await idle(store, "u1");
@@ -150,7 +178,7 @@ describe("UnitManager", () => {
 
   it("loads stored units when their front appears later", async () => {
     const db = new Db(":memory:");
-    db.saveUnit({ id: "u1", frontId: "f2", name: "Later", model: "haiku", sessionId: null, turns: 0, filesChanged: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, replyId: null, reply: "", createdAt: 1 });
+    db.saveUnit({ id: "u1", frontId: "f2", name: "Later", model: "haiku", permissionMode: "auto", sessionId: null, turns: 0, filesChanged: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, replyId: null, reply: "", createdAt: 1 });
     const { store } = setup(fakeQuery([]).fn, storeWithFront("f1"), db);
     expect(store.state.units.u1).toBeUndefined();
     store.emit({ type: "front.upserted", front: testFront("f2") });

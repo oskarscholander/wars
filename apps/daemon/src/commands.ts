@@ -1,4 +1,4 @@
-import { UNIT_MODELS, type ClientCommand, type UnitModel } from "@ww/shared";
+import { PERMISSION_MODES, UNIT_MODELS, type ClientCommand, type PermissionMode, type UnitModel } from "@ww/shared";
 
 const str = (v: unknown, max = 10_000): v is string => typeof v === "string" && v.length > 0 && v.length <= max;
 
@@ -25,8 +25,19 @@ export function parseClientCommand(raw: unknown): ClientCommand | null {
     case "front.create":
       return str(m.repoId, 64) && str(m.branch, 200) ? { type: m.type, repoId: m.repoId, branch: m.branch } : null;
     case "unit.create":
+      if (m.permissionMode !== undefined && !PERMISSION_MODES.includes(m.permissionMode as PermissionMode)) return null;
       return str(m.frontId, 64) && str(m.name, 80) && UNIT_MODELS.includes(m.model as UnitModel)
-        ? { type: m.type, frontId: m.frontId, name: m.name, model: m.model as UnitModel }
+        ? {
+            type: m.type,
+            frontId: m.frontId,
+            name: m.name,
+            model: m.model as UnitModel,
+            ...(m.permissionMode ? { permissionMode: m.permissionMode as PermissionMode } : {}),
+          }
+        : null;
+    case "unit.update":
+      return str(m.unitId, 64) && PERMISSION_MODES.includes(m.permissionMode as PermissionMode)
+        ? { type: m.type, unitId: m.unitId, permissionMode: m.permissionMode as PermissionMode }
         : null;
     case "unit.order":
       return str(m.unitId, 64) && str(m.text, 100_000) ? { type: m.type, unitId: m.unitId, text: m.text } : null;
