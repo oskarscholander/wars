@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Worktree Wars</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700&family=IBM+Plex+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --panel:#ece4cc; --panel-ink:#26241c; --panel-soft:#6a6350; --edge:#cbbf9c;
+  --chip:#26302a; --chip-ink:#e9e1c7; --brass:#d4a93a; --alert:#b8412f; --ok:#3d7a45;
+  --bubble:#fffbee; --bubble-ink:#26241c; --code:#efe6cc;
+  --add-bg:#dcefd9; --del-bg:#f5dcd5;
+  --display:"Saira Condensed","Arial Narrow",system-ui,sans-serif;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --panel:#232822; --panel-ink:#ebe3c9; --panel-soft:#a9a288; --edge:#3a4238;
+    --chip:#171c18; --bubble:#f6eed6; --code:#e8dfc4;
+  }
+}
+:root[data-theme="dark"]{
+  --panel:#232822; --panel-ink:#ebe3c9; --panel-soft:#a9a288; --edge:#3a4238;
+  --chip:#171c18; --bubble:#f6eed6; --code:#e8dfc4;
+}
+*,*::before,*::after{box-sizing:inherit}
+html,body{height:100%;margin:0;overflow:hidden}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{background:#a9c3c9;font-family:var(--sans);color:var(--panel-ink)}
+button,input{font:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
+canvas{position:fixed;inset:0;display:block;touch-action:none}
+
+.top{
+  position:fixed;left:0;right:0;top:0;padding:calc(8px + env(safe-area-inset-top,0px)) 8px 8px;
+  display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;z-index:5;pointer-events:none
+}
+.top button{
+  pointer-events:auto;flex:0 0 auto;border:2px solid transparent;border-radius:6px;
+  background:var(--chip);color:var(--chip-ink);padding:5px 10px;text-align:left;
+  display:flex;flex-direction:column;gap:1px
+}
+.top button[aria-pressed="true"]{border-color:var(--brass)}
+.top b{font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.02em;white-space:nowrap}
+.top small{font-size:12px;opacity:.8;white-space:nowrap}
+.top .alert{color:#ffb4a5;opacity:1}
+.top .won{color:var(--brass);opacity:1}
+
+.layer{position:fixed;inset:0;pointer-events:none;z-index:3}
+.flabel{
+  position:absolute;transform:translate(-50%,0);pointer-events:auto;border:0;border-radius:4px;
+  background:rgba(23,28,24,.85);color:#e9e1c7;font-family:var(--mono);font-size:11px;padding:3px 7px;white-space:nowrap
+}
+.mark{
+  position:absolute;transform:translate(-50%,-100%);pointer-events:auto;border:0;
+  background:var(--alert);color:#fff;font-weight:700;font-size:12px;border-radius:999px;padding:3px 9px;
+  box-shadow:0 2px 0 rgba(0,0,0,.35);white-space:nowrap
+}
+.bubble{
+  position:absolute;transform:translate(-50%,calc(-100% - 12px));pointer-events:auto;
+  background:var(--bubble);color:var(--bubble-ink);border-radius:14px;padding:9px 12px;
+  width:max-content;max-width:min(270px,80vw);font-size:14px;line-height:1.45;
+  box-shadow:0 4px 0 rgba(0,0,0,.28)
+}
+.bubble::after{content:"";position:absolute;left:50%;bottom:-9px;margin-left:-9px;border:9px solid transparent;border-top-color:var(--bubble);border-bottom:0}
+.bubble .who{display:block;font-family:var(--display);font-weight:700;font-size:15px;color:#6a6350}
+.bubble code,.bubble pre{font-family:var(--mono);font-size:12px;background:var(--code);border-radius:4px}
+.bubble code{padding:1px 4px}
+.bubble pre{padding:6px 8px;margin:6px 0;white-space:pre-wrap}
+.bubble .acts{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.btn{border:0;border-radius:999px;padding:7px 13px;font-weight:600;font-size:13px}
+.btn.go{background:var(--ok);color:#fff}
+.btn.no{background:transparent;color:var(--alert);box-shadow:inset 0 0 0 2px var(--alert)}
+.btn.plain{background:#26241c;color:#ece4cc}
+.btn.gold{background:var(--brass);color:#26241c}
+.dots span{display:inline-block;width:6px;height:6px;border-radius:50%;background:#6a6350;margin-right:4px;animation:blink 1s infinite}
+.dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,100%{opacity:.25}50%{opacity:1}}
+
+.panel{
+  position:fixed;left:0;right:0;bottom:0;z-index:6;margin:0 auto;max-width:720px;
+  background:var(--panel);border-radius:16px 16px 0 0;border-top:1px solid var(--edge);
+  padding:10px 12px calc(12px + env(safe-area-inset-bottom,0px));
+  display:flex;flex-direction:column;gap:8px;box-shadow:0 -6px 20px rgba(0,0,0,.3)
+}
+.unit{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.unit h2{font-family:var(--display);font-weight:700;font-size:20px;margin:0;letter-spacing:.01em}
+.unit .kind{font-size:13px;color:var(--panel-soft)}
+.stats{display:flex;gap:12px;font-size:13px;font-weight:600}
+.stats .add{color:var(--ok)} .stats .fail{color:var(--alert)}
+.idle-msg{margin:0;font-size:14px;color:var(--panel-soft)}
+.hints{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.hints button{flex:0 0 auto;background:transparent;border:1px solid var(--edge);color:var(--panel-ink);border-radius:999px;padding:4px 11px;font-size:13px}
+.say{display:flex;gap:8px}
+.say .field{flex:1;display:flex;background:var(--bubble);border-radius:999px;padding:0 14px}
+.say .field:focus-within{box-shadow:0 0 0 3px var(--brass)}
+.say input{flex:1;border:0;background:transparent;color:var(--bubble-ink);padding:10px 0;font-size:16px;min-width:0}
+.say input:focus{outline:none}
+.say .send{background:var(--brass);color:#26241c;border:0;border-radius:999px;padding:0 16px;font-weight:600}
+.say input:disabled{opacity:.5}
+
+.sheet{position:fixed;inset:0;background:rgba(10,12,10,.6);display:none;align-items:flex-end;justify-content:center;z-index:10}
+.sheet.open{display:flex}
+.sheet .inner{
+  background:var(--panel);width:100%;max-width:720px;max-height:82%;
+  border-radius:16px 16px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom,0px));
+  display:flex;flex-direction:column;gap:10px
+}
+.sheet h3{font-family:var(--display);font-weight:700;font-size:20px;margin:0}
+.sheet p{font-size:13px;color:var(--panel-soft);margin:0}
+.diff{overflow:auto;border-radius:8px;background:#fbf6ea;border:1px solid var(--edge);color:#26241c}
+.diff .file{font-family:var(--mono);font-size:12px;font-weight:600;padding:6px 10px;background:#e8dcbc}
+.diff button{display:block;width:100%;text-align:left;border:0;background:transparent;font-family:var(--mono);font-size:12.5px;padding:2px 10px;white-space:pre;color:#26241c}
+.diff button.add{background:var(--add-bg)} .diff button.del{background:var(--del-bg)}
+.diff .n{display:inline-block;width:2.6em;color:#9b8f76}
+.toast{position:fixed;left:50%;top:calc(64px + env(safe-area-inset-top,0px));transform:translateX(-50%);background:var(--brass);color:#26241c;font-weight:600;padding:8px 16px;border-radius:999px;display:none;z-index:20}
+.toast.show{display:block}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<nav class="top" id="top" aria-label="Fronts"></nav>
+<div class="layer" id="labels"></div>
+<div class="layer" id="marks"></div>
+<div class="layer" id="bubbles" aria-live="polite"></div>
+
+<section class="panel" id="panel" aria-label="Orders">
+  <div id="unitInfo"></div>
+  <div class="hints" id="hints">
+    <button data-say="Report what you changed">Report changes</button>
+    <button data-say="Run the tests">Run tests</button>
+    <button data-say="Add a delete button to comment threads">New task</button>
+    <button data-say="Open a PR">Open PR</button>
+    <button id="deploy">Deploy a unit here</button>
+  </div>
+  <form class="say" id="sayForm" autocomplete="off">
+    <div class="field"><input id="sayInput" aria-label="Order" placeholder="Tap a unit to give it orders" disabled></div>
+    <button class="send" type="submit">Send</button>
+  </form>
+</section>
+
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="inner">
+    <h3 id="sheetTitle">Field report</h3>
+    <p>Tap a line to comment on it. Your comment becomes the unit's next order.</p>
+    <div class="diff" id="diffView"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn go" id="approveBtn">Approve</button>
+      <button class="btn no" id="changesBtn">Request changes</button>
+      <button class="btn plain" id="closeSheet">Close</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ---------- data ---------- */
+const fronts=[
+ {id:"comments",branch:"feat/tiptap-comments",ground:0x6f8a4c,team:0x3f6fb5,pr:null,units:[
+  {id:"c1",name:"Comment Threads",model:"opus",prog:.45,ci:"pass",mana:212,atk:[142,38],log:[{w:"agent",t:"Threads render inline. Resolve works, delete doesn't yet."}]},
+  {id:"c2",name:"Mention Popover",model:"sonnet",prog:.3,ci:"fail",mana:64,atk:[58,12],
+   pending:{cmd:"pnpm vitest run --project editor",next:"test"},
+   log:[{w:"agent",t:"One test fails on Escape. Requesting permission to run the editor tests."}]}]},
+ {id:"grading",branch:"fix/assignment-grading",ground:0x86884a,team:0xb0791b,pr:"#491",prOwner:"g1",units:[
+  {id:"g1",name:"Rubric Rounding",model:"sonnet",prog:1,ci:"pass",mana:41,atk:[23,9],log:[{w:"agent",t:"PR #491 is open. Merge it to take the objective."}]}]},
+ {id:"feedback",branch:"ai/feedback-summary",ground:0x5c7d5a,team:0x8b4f9e,pr:null,units:[
+  {id:"f1",name:"Feedback Digest",model:"opus",prog:.6,ci:"pass",mana:388,atk:[311,40],log:[{w:"agent",t:"Summaries generate per student. Want the teacher tone toggle next?"}]},
+  {id:"f2",name:"Eval Harness",model:"haiku",prog:.2,ci:"pass",mana:12,atk:[74,0],log:[{w:"agent",t:"Eval set has 40 cases. Ready when you are."}]}]},
+];
+const kinds={opus:"Opus · tank",sonnet:"Sonnet · infantry squad",haiku:"Haiku · scout"};
+let selFront=null, selUnit=null;
+fronts.forEach(f=>f.units.forEach(u=>{u.status=u.pending?"waiting":"idle";u.front=f}));
+const alive=f=>f.units.some(u=>u.ci==="fail");
+
+/* ---------- three setup ---------- */
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0xa9c3c9);
+scene.fog=new THREE.Fog(0xa9c3c9,80,190);
+const camera=new THREE.PerspectiveCamera(42,1,.1,400);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xdfe8f0,0x2a2418,.7));
+const sun=new THREE.DirectionalLight(0xfff0d0,.95);
+sun.position.set(25,45,20); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
+Object.assign(sun.shadow.camera,{left:-60,right:60,top:60,bottom:-60,near:1,far:160});
+scene.add(sun);
+
+const M=c=>new THREE.MeshStandardMaterial({color:c,roughness:.9,flatShading:true});
+function mk(geo,c){const m=new THREE.Mesh(geo,M(c));m.castShadow=m.receiveShadow=true;return m}
+const box=(w,h,d,c)=>mk(new THREE.BoxGeometry(w,h,d),c);
+const cyl=(a,b,h,c,s=8)=>mk(new THREE.CylinderGeometry(a,b,h,s),c);
+let seed=7; const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+
+const water=new THREE.Mesh(new THREE.PlaneGeometry(500,500),new THREE.MeshStandardMaterial({color:0x3d8088,roughness:.35,metalness:.1,transparent:true,opacity:.86}));
+water.rotation.x=-Math.PI/2; water.receiveShadow=true; scene.add(water);
+const bed=new THREE.Mesh(new THREE.PlaneGeometry(500,500),M(0x26474d)); bed.rotation.x=-Math.PI/2; bed.position.y=-2.2; scene.add(bed);
+const smooth=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t)};
+const clamp01=x=>Math.max(0,Math.min(1,x));
+
+function tree(){const g=new THREE.Group();const t=cyl(.12,.16,.6,0x5b4630);t.position.y=.3;
+  const round=rnd()<.4;
+  const c=round?mk(new THREE.IcosahedronGeometry(.7+rnd()*.35,0),0x557a3d):mk(new THREE.ConeGeometry(.6+rnd()*.3,1.5+rnd()*.9,6),0x3e5f3a);
+  c.position.y=round?1.1:1.3;c.rotation.y=rnd()*6;g.add(t,c);const s=.75+rnd()*.5;g.scale.set(s,s,s);return g}
+function rock(){const r=mk(new THREE.DodecahedronGeometry(.3+rnd()*.3,0),0x8a8778);r.position.y=.15;r.rotation.set(rnd(),rnd(),rnd());return r}
+
+const OLIVE=0x5b6436, DARK=0x2e3326, SKIN=0xd9b48f;
+const builders={
+ opus(team){const g=new THREE.Group();
+  const hull=box(1.5,.5,2.1,OLIVE);hull.position.y=.45;
+  const tl=box(.38,.5,2.25,DARK);tl.position.set(-.8,.3,0);const tr=tl.clone();tr.position.x=.8;
+  const tur=box(.95,.42,.95,team);tur.position.y=.92;
+  const bar=cyl(.08,.08,1.3,DARK);bar.rotation.x=Math.PI/2;bar.position.set(0,.95,-1);
+  g.add(hull,tl,tr,tur,bar);return g},
+ sonnet(team){const g=new THREE.Group();
+  [[-.45,.3],[.45,.3],[0,-.35]].forEach(([x,z])=>{
+   const b=cyl(.15,.19,.55,OLIVE);b.position.set(x,.3,z);
+   const h=mk(new THREE.SphereGeometry(.14,8,6),SKIN);h.position.set(x,.7,z);
+   const hel=mk(new THREE.SphereGeometry(.16,8,4,0,Math.PI*2,0,Math.PI/2),team);hel.position.set(x,.73,z);
+   const gun=box(.06,.06,.55,DARK);gun.position.set(x+.17,.4,z-.2);
+   g.add(b,h,hel,gun)});return g},
+ haiku(team){const g=new THREE.Group();
+  const body=box(1,.4,1.5,OLIVE);body.position.y=.45;
+  const cab=box(.85,.32,.6,team);cab.position.set(0,.8,.2);
+  [[-.55,-.5],[.55,-.5],[-.55,.5],[.55,.5]].forEach(([x,z])=>{const w=cyl(.22,.22,.18,DARK,10);w.rotation.z=Math.PI/2;w.position.set(x,.22,z);g.add(w)});
+  g.add(body,cab);return g}
+};
+const ring=new THREE.Mesh(new THREE.RingGeometry(1.35,1.6,40),new THREE.MeshBasicMaterial({color:0xd4a93a,transparent:true,opacity:.9}));
+ring.rotation.x=-Math.PI/2; ring.position.y=.08; ring.visible=false; scene.add(ring);
+
+function shape(f){
+  f.ph=Array.from({length:6},()=>rnd()*6.28);
+  const pts=[];for(let k=0;k<=6;k++){const z=9.5-k*19/6;const amp=(k===0||k===6)?.4:2.3;pts.push(new THREE.Vector3(Math.sin(k*1.2+f.ph[0])*amp,0,z))}
+  f.curve=new THREE.CatmullRomCurve3(pts); f.samples=f.curve.getSpacedPoints(160);
+}
+function roadDist(f,x,z){let m=1e9;for(const p of f.samples){const d=(p.x-x)**2+(p.z-z)**2;if(d<m)m=d}return Math.sqrt(m)}
+function edgeOf(f,x,z){const zz=z/1.4,a=Math.atan2(zz,x),r=Math.hypot(x,zz),p=f.ph;
+  const R=8.6+1.1*Math.sin(3*a+p[1])+.7*Math.sin(5*a+p[2])+.4*Math.sin(8*a+p[3]);return 1-smooth(R-3,R+.6,r)}
+function heightAt(f,x,z,d=roadDist(f,x,z)){const p=f.ph,e=edgeOf(f,x,z);
+  const base=.9+.3*Math.sin(.4*x+p[4])*Math.cos(.33*z+p[5])+.18*Math.sin(.7*z+p[1]);
+  const hills=(1.3*Math.max(0,Math.sin(.45*x+p[2])*Math.cos(.38*z+p[3])+.3)+.35*Math.sin(1.3*x-.9*z+p[4]))*smooth(1.8,5.5,d);
+  return (base+hills)*e-1.7*(1-e)}
+function roadPoint(f,s,lane=0){s=clamp01(s);const pt=f.curve.getPointAt(s),tg=f.curve.getTangentAt(s);
+  const x=pt.x-tg.z*lane,z=pt.z+tg.x*lane;return {x,z,y:heightAt(f,x,z),rot:Math.atan2(-tg.x,-tg.z)}}
+const sOf=p=>.05+p*.86;
+function buildFront(f){
+  shape(f);
+  const g=new THREE.Group(); scene.add(g); f.group=g;
+  const geo=new THREE.PlaneGeometry(26,34,78,102); geo.rotateX(-Math.PI/2);
+  const pos=geo.attributes.position, col=new Float32Array(pos.count*3), c=new THREE.Color();
+  const g1=new THREE.Color(f.ground), g2=new THREE.Color(f.ground).multiplyScalar(.7);
+  for(let i=0;i<pos.count;i++){
+    const x=pos.getX(i),z=pos.getZ(i),d=roadDist(f,x,z),h=heightAt(f,x,z,d); pos.setY(i,h);
+    if(h<.28) c.setHex(h<-.15?0x9d9068:0xd9c690);
+    else if(d<1.3) c.setHex(0xb39b6b).lerp(new THREE.Color(0x9c8458),rnd()*.4);
+    else if(h>2.4) c.setHex(0x8f8b7b);
+    else c.copy(g1).lerp(g2,clamp01((h-.3)/2.2+(rnd()-.5)*.18));
+    col[i*3]=c.r;col[i*3+1]=c.g;col[i*3+2]=c.b;
+  }
+  geo.setAttribute("color",new THREE.BufferAttribute(col,3)); geo.computeVertexNormals();
+  const land=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:.95,flatShading:true}));
+  land.receiveShadow=land.castShadow=true; land.userData.front=f; g.add(land);
+  let placed=0;
+  for(let k=0;k<400&&placed<46;k++){
+    const x=(rnd()-.5)*24,z=(rnd()-.5)*32; if(edgeOf(f,x,z)<.85)continue;
+    const d=roadDist(f,x,z); if(d<2.3)continue;
+    if(Math.sin(.5*x+f.ph[5])*Math.cos(.42*z+f.ph[2])<-.15)continue;
+    const h=heightAt(f,x,z,d); if(h<.5)continue;
+    const t=tree();t.position.set(x,h-.05,z);g.add(t);placed++;
+  }
+  for(let k=0;k<10;k++){const x=(rnd()-.5)*18,z=(rnd()-.5)*26;if(edgeOf(f,x,z)<.6)continue;const r=rock();r.position.set(x,heightAt(f,x,z)+.05,z);g.add(r)}
+  const tp=roadPoint(f,.03,-2.8);
+  const tent=mk(new THREE.ConeGeometry(1.5,1.6,4),0x7d7456);tent.rotation.y=Math.PI/4+tp.rot;tent.position.set(tp.x,tp.y+.75,tp.z);g.add(tent);
+  const bp=roadPoint(f,sOf(.69));
+  const bk=new THREE.Group();const b1=mk(new THREE.CylinderGeometry(1.1,1.4,1,7),0x7a3b2e);b1.position.y=.5;
+  const top=mk(new THREE.CylinderGeometry(.7,1.1,.35,7),0x6a3327);top.position.y=1.15;
+  const slit=box(1.3,.16,.1,0x1a0f0c);slit.position.set(0,.72,1.1);bk.add(b1,top,slit);
+  bk.rotation.y=bp.rot;f.bunkerY=bp.y-.1;bk.position.set(bp.x,alive(f)?f.bunkerY:f.bunkerY-1.8,bp.z);g.add(bk);f.bunker=bk;f.bunkerMat=b1.material;
+  const fp=roadPoint(f,.97);
+  const pole=cyl(.06,.06,3.2,0xcfc7b0);pole.position.set(fp.x,fp.y+1.6,fp.z);
+  const cloth=box(1.4,.8,.06,f.pr?0xd4a93a:0x9c3b2e);cloth.position.set(fp.x+.72,fp.y+2.8,fp.z);g.add(pole,cloth);f.cloth=cloth;
+  f.units.forEach(u=>addUnit(f,u));
+}
+function addUnit(f,u){
+  const m=builders[u.model](f.team);
+  const bea=new THREE.Mesh(new THREE.SphereGeometry(.2,10,8),new THREE.MeshBasicMaterial({color:0xff5a3c}));
+  bea.position.y=2.1;m.add(bea);u.beacon=bea;
+  m.traverse(o=>o.userData.unit=u);
+  u.mesh=m;u.cur=u.prog;u.fireUntil=0;u.nextShot=0;f.group.add(m);layout(f);
+}
+function layout(f){const n=f.units.length;f.units.forEach((u,j)=>u.lane=Math.max(-2.2,Math.min(2.2,(j-(n-1)/2)*1.7)))}
+fronts.forEach(buildFront);
+
+function placeFronts(){
+  const portrait=innerWidth<innerHeight;
+  fronts.forEach((f,i)=>{ if(portrait) f.group.position.set(i%2?3:-3,0,(i-1)*31); else f.group.position.set((i-1)*25,0,i%2?-4:3); });
+}
+
+/* ---------- effects ---------- */
+const fx=[];
+function shoot(u,target){
+  const s=new THREE.Vector3();u.mesh.getWorldPosition(s);s.y+=.9;s.z-=1;
+  const p=new THREE.Mesh(new THREE.SphereGeometry(.12,6,4),new THREE.MeshBasicMaterial({color:0xffd66b}));
+  scene.add(p);fx.push({m:p,a:s,b:target.clone(),t:0,kind:"shot"});
+}
+function puff(at){const p=new THREE.Mesh(new THREE.SphereGeometry(.3,8,6),new THREE.MeshBasicMaterial({color:0xcfc8b8,transparent:true,opacity:.8}));
+  p.position.copy(at);scene.add(p);fx.push({m:p,t:0,kind:"puff"})}
+
+/* ---------- camera ---------- */
+let az=0, el=.95, zoom=1, radius=50;
+const target=new THREE.Vector3(), want=new THREE.Vector3();
+let panelH=200;
+function fitRadius(hw,hd){
+  const w=innerWidth,h=innerHeight,vt=Math.tan(THREE.MathUtils.degToRad(camera.fov/2));
+  const asp=w/(h+panelH), usable=Math.max(.3,(h-panelH-60)/(h+panelH));
+  return Math.max(hw/(vt*asp), hd*.85/(vt*usable))*1.08;
+}
+function resize(){
+  panelH=document.getElementById("panel").offsetHeight;
+  const w=innerWidth,h=innerHeight;
+  renderer.setSize(w,h); camera.aspect=w/(h+panelH);
+  camera.setViewOffset(w,h+panelH,0,panelH,w,h); camera.updateProjectionMatrix();
+  placeFronts();
+}
+addEventListener("resize",resize);
+
+/* ---------- input on canvas ---------- */
+const ptrs=new Map(); let downAt=null, pinch0=0, zoom0=1;
+const cv=renderer.domElement;
+cv.addEventListener("pointerdown",e=>{cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size===1)downAt={x:e.clientX,y:e.clientY,moved:false};
+  if(ptrs.size===2){const [a,b]=[...ptrs.values()];pinch0=Math.hypot(a.x-b.x,a.y-b.y);zoom0=zoom;downAt=null}});
+cv.addEventListener("pointermove",e=>{const p=ptrs.get(e.pointerId);if(!p)return;
+  if(ptrs.size===2){p.x=e.clientX;p.y=e.clientY;const [a,b]=[...ptrs.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);zoom=Math.max(.45,Math.min(2.2,zoom0*pinch0/d));return}
+  const dx=e.clientX-p.x,dy=e.clientY-p.y;p.x=e.clientX;p.y=e.clientY;
+  if(downAt&&Math.hypot(e.clientX-downAt.x,e.clientY-downAt.y)>8)downAt.moved=true;
+  if(downAt&&downAt.moved){az-=dx*.008;el=Math.max(.45,Math.min(1.35,el+dy*.005))}});
+cv.addEventListener("pointerup",e=>{ptrs.delete(e.pointerId);if(downAt&&!downAt.moved&&ptrs.size===0)tap(e.clientX,e.clientY);if(ptrs.size===0)downAt=null});
+cv.addEventListener("pointercancel",e=>ptrs.delete(e.pointerId));
+cv.addEventListener("wheel",e=>{e.preventDefault();zoom=Math.max(.45,Math.min(2.2,zoom*(1+e.deltaY*.001)))},{passive:false});
+
+const ray=new THREE.Raycaster();
+function tap(x,y){
+  const ndc=new THREE.Vector2(x/innerWidth*2-1,-(y/innerHeight)*2+1);
+  ray.setFromCamera(ndc,camera);
+  const hits=ray.intersectObjects(scene.children,true);
+  for(const h of hits){
+    if(h.object.userData.unit){selectUnit(h.object.userData.unit);return}
+    if(h.object.userData.front){selectFront(h.object.userData.front);return}
+  }
+}
+function selectFront(f){selFront=f;selUnit=null;zoom=1;renderHUD()}
+function selectUnit(u){selFront=u.front;selUnit=u;zoom=1;renderHUD()}
+
+/* ---------- orders ---------- */
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt=s=>esc(s).replace(/`([^`]+)`/g,"<code>$1</code>");
+function mockDiff(){return[
+ {f:"src/editor/ui/ThreadPopover.tsx",l:[[" ","  const { resolve } = useThreadActions(thread.id)"],["-","  const { resolve } = useThreadActions(thread.id)"],["+","  const { resolve, remove } = useThreadActions(thread.id)"],[" ","      <Button onClick={resolve}>Resolve</Button>"],["+","      <Button variant=\"danger\" onClick={remove}>"],["+","        Delete thread"],["+","      </Button>"]]},
+ {f:"src/editor/hooks/useThreadActions.ts",l:[[" ","  const resolve = () => setResolved(id, true)"],["+","  const remove = () => {"],["+","    editor.commands.unsetCommentThread(id)"],["+","    api.threads.delete(id)"],["+","  }"],["-","  return { resolve }"],["+","  return { resolve, remove }"]]}]}
+
+function reply(u,text,ms=1200,after){
+  u.status="working";renderHUD();
+  setTimeout(()=>{u.log.push({w:"agent",t:text});u.status=u.pending?"waiting":"idle";after&&after();renderHUD()},ms);
+}
+function order(text){
+  const u=selUnit;if(!u)return;const f=u.front;u.log.push({w:"you",t:text});
+  const t=text.toLowerCase();
+  if(/report|review|diff|changed|show/.test(t)){
+    u.diff ||= mockDiff(); u.diffDone=false;
+    const a=u.diff.reduce((n,x)=>n+x.l.filter(l=>l[0]==="+").length,0), d=u.diff.reduce((n,x)=>n+x.l.filter(l=>l[0]==="-").length,0);
+    reply(u,`Field report ready: ${u.diff.length} files, +${a} −${d}.`);
+  } else if(/test|lint|build|run/.test(t)){
+    reply(u,"Requesting permission to run the tests.",900,()=>{u.pending={cmd:"pnpm vitest run --project editor",next:"test"}});
+  } else if(/\bpr\b|pull request|push|ship/.test(t)){
+    if(alive(f)) reply(u,"Can't push yet. A failing test bunker blocks the road. Order me to run the tests first.");
+    else reply(u,"Road is clear. Requesting permission to push and open the PR.",900,()=>{u.pending={cmd:`git push -u origin ${f.branch}\ngh pr create --fill`,next:"pr"}});
+  } else {
+    u.fireUntil=performance.now()+2600;
+    reply(u,"",2600,()=>{
+      u.log.pop();
+      u.prog=Math.min(u.prog+.2,alive(f)?.62:.95);u.atk[0]+=11;u.atk[1]+=2;u.mana+=18;u.diff=mockDiff();u.diffDone=false;
+      u.log.push({w:"agent",t:alive(f)&&u.prog>=.62?"Advanced, but pinned down by a failing test. Order me to run the tests to clear it.":"Done: 2 files changed. Ask for a report when you want to look."});
+    });
+  }
+}
+function resolvePerm(u,allow){
+  const p=u.pending;u.pending=null;const f=u.front;
+  if(!allow){reply(u,"Holding position.",600);return}
+  if(p.next==="test"){
+    u.fireUntil=performance.now()+1800;u.shootAt="bunker";
+    reply(u,"48 passed, 0 failed. Bunker cleared.",1900,()=>{f.units.forEach(x=>x.ci="pass");f.sinking=true;u.shootAt=null;
+      const w=new THREE.Vector3();f.bunker.getWorldPosition(w);w.y+=1;puff(w)});
+  } else if(p.next==="pr"){
+    reply(u,"",1300,()=>{u.log.pop();f.pr="#"+(500+Math.floor(Math.random()*40));f.prOwner=u.id;u.prog=1;f.cloth.material.color.setHex(0xd4a93a);
+      u.log.push({w:"agent",t:`PR ${f.pr} is open. Merge it to take the objective.`})});
+  }
+}
+function merge(u){const f=u.front;f.won=true;f.cloth.material.color.setHex(f.team);u.log.push({w:"agent",t:"Objective taken. Merged into main."});toast("Front won · merged into main");renderHUD()}
+
+/* ---------- HUD ---------- */
+const $=s=>document.querySelector(s);
+function renderHUD(){
+  const waitingAll=fronts.flatMap(f=>f.units).filter(u=>u.status==="waiting").length;
+  $("#top").innerHTML=`<button aria-pressed="${!selFront}" data-all><b>All fronts</b><small class="${waitingAll?"alert":""}">${waitingAll?`${waitingAll} need${waitingAll>1?"":"s"} you`:"All quiet"}</small></button>`+
+   fronts.map((f,i)=>{const w=f.units.filter(u=>u.status==="waiting").length;
+    const sub=f.won?`<small class="won">Won</small>`:w?`<small class="alert">${w} need${w>1?"":"s"} you</small>`:`<small>${f.units.length} unit${f.units.length>1?"s":""}${f.pr?` · PR ${f.pr}`:""}${alive(f)?" · tests failing":""}</small>`;
+    return `<button aria-pressed="${selFront===f}" data-front="${i}"><b>${esc(f.branch)}</b>${sub}</button>`}).join("");
+  const u=selUnit, inp=$("#sayInput");
+  if(u){
+    $("#unitInfo").innerHTML=`<div class="unit"><div><h2>${esc(u.name)}</h2><span class="kind">${kinds[u.model]} on ${esc(u.front.branch)}</span></div>
+     <div class="stats"><span class="add">+${u.atk[0]} −${u.atk[1]}</span><span class="${u.ci==="fail"?"fail":""}">${u.ci==="pass"?"Tests pass":"Tests failing"}</span><span>${u.mana}k tokens</span></div></div>`;
+    inp.disabled=false; inp.placeholder=`Radio ${u.name}…`;
+  } else {
+    $("#unitInfo").innerHTML=`<p class="idle-msg">${selFront?`Tap a unit on ${esc(selFront.branch)} to give it orders, or deploy a new one.`:"Each battlefield is a worktree and each unit is an agent. Tap a unit to give it orders."}</p>`;
+    inp.disabled=true; inp.placeholder="Tap a unit to give it orders";
+  }
+  $("#hints").querySelectorAll("[data-say]").forEach(b=>b.disabled=!u);
+  $("#deploy").hidden=!selFront;
+  // bubble
+  if(u){
+    const last=[...u.log].reverse().find(m=>m.w==="agent");
+    let body=u.status==="working"?`<span class="dots" aria-label="Working"><span></span><span></span><span></span></span>`:(last?fmt(last.t):"Awaiting orders.");
+    let acts="";
+    if(u.pending&&u.status==="waiting") body+=`<pre>${esc(u.pending.cmd)}</pre>`, acts+=`<button class="btn go" data-allow>Allow</button><button class="btn no" data-deny>Deny</button>`;
+    if(u.diff&&!u.diffDone&&u.status!=="working") acts+=`<button class="btn plain" data-report>Open report</button>`;
+    if(u.front.pr&&!u.front.won&&u.front.prOwner===u.id&&u.status!=="working") acts+=`<button class="btn gold" data-merge>Merge</button>`;
+    $("#bubbles").innerHTML=`<div class="bubble" id="bub"><span class="who">${esc(u.name)}</span>${body}${acts?`<div class="acts">${acts}</div>`:""}</div>`;
+  } else $("#bubbles").innerHTML="";
+  // marks
+  $("#marks").innerHTML=fronts.flatMap(f=>f.units).filter(x=>x.status==="waiting"&&x!==u).map(x=>`<button class="mark" data-unit="${x.id}">Needs you</button>`).join("");
+  $("#labels").innerHTML=fronts.map((f,i)=>`<button class="flabel" data-front="${i}">${esc(f.branch)}</button>`).join("");
+  requestAnimationFrame(()=>{const h=$("#panel").offsetHeight;if(Math.abs(h-panelH)>2)resize()});
+}
+const allUnits=()=>fronts.flatMap(f=>f.units);
+document.addEventListener("click",e=>{
+  const t=e.target;
+  if(t.closest("[data-all]")){selFront=null;selUnit=null;zoom=1;renderHUD();return}
+  const fb=t.closest("[data-front]");if(fb){selectFront(fronts[+fb.dataset.front]);return}
+  const ub=t.closest("[data-unit]");if(ub){selectUnit(allUnits().find(x=>x.id===ub.dataset.unit));return}
+  if(t.closest("[data-allow]")){resolvePerm(selUnit,true);return}
+  if(t.closest("[data-deny]")){resolvePerm(selUnit,false);return}
+  if(t.closest("[data-report]")){openReport();return}
+  if(t.closest("[data-merge]")){merge(selUnit);return}
+  const h=t.closest("[data-say]");if(h&&selUnit){$("#sayInput").value=h.dataset.say;$("#sayInput").focus();return}
+  if(t.closest("#deploy")&&selFront){
+    const u={id:"n"+Date.now(),name:"Fresh Squad",model:"sonnet",prog:0,ci:alive(selFront)?"fail":"pass",mana:0,atk:[0,0],log:[],status:"idle",front:selFront};
+    selFront.units.push(u);addUnit(selFront,u);u.cur=-.15;selectUnit(u);$("#sayInput").focus();return}
+  const ln=t.closest("[data-ln]");
+  if(ln){const [fi,li]=ln.dataset.ln.split(":").map(Number);const f=selUnit.diff[fi];
+    closeReport();$("#sayInput").value=`On \`${f.f.split("/").pop()}:${li+1}\`: `;$("#sayInput").focus()}
+});
+$("#sayForm").addEventListener("submit",e=>{e.preventDefault();const v=$("#sayInput").value.trim();if(!v||!selUnit)return;$("#sayInput").value="";order(v)});
+
+function openReport(){
+  const d=selUnit.diff;
+  $("#diffView").innerHTML=d.map((f,fi)=>`<div class="file">${esc(f.f)}</div>`+f.l.map((l,li)=>`<button class="${l[0]==="+"?"add":l[0]==="-"?"del":""}" data-ln="${fi}:${li}"><span class="n">${li+1}</span>${esc(l[0]+" "+l[1])}</button>`).join("")).join("");
+  $("#sheet").classList.add("open");$("#approveBtn").focus();
+}
+function closeReport(){$("#sheet").classList.remove("open")}
+$("#approveBtn").onclick=()=>{selUnit.diffDone=true;closeReport();selUnit.log.push({w:"you",t:"Approved"});reply(selUnit,"Thanks. Order me to open a PR when you're ready.",700)};
+$("#changesBtn").onclick=()=>{closeReport();const i=$("#sayInput");i.value="Please change: ";i.focus()};
+$("#closeSheet").onclick=closeReport;
+$("#sheet").addEventListener("click",e=>{if(e.target.id==="sheet")closeReport()});
+addEventListener("keydown",e=>{if(e.key==="Escape")closeReport()});
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2000)}
+
+/* ---------- loop ---------- */
+const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+const tmp=new THREE.Vector3();
+function place(el,v,dy=0){tmp.copy(v);tmp.y+=dy;tmp.project(camera);
+  if(!el)return; if(tmp.z>1){el.style.display="none";return} el.style.display="";
+  el.style.left=((tmp.x+1)/2*innerWidth)+"px";el.style.top=((1-tmp.y)/2*innerHeight)+"px"}
+let last=performance.now();
+function loop(now){
+  const dt=Math.min(.05,(now-last)/1000);last=now;
+  // camera target
+  const portrait=innerWidth<innerHeight;
+  if(selFront){selFront.group.getWorldPosition(want);radius+=(fitRadius(10,14)*zoom-radius)*Math.min(1,dt*3)}
+  else{want.set(0,0,0);radius+=((portrait?fitRadius(13,48):fitRadius(38,18))*zoom-radius)*Math.min(1,dt*3)}
+  target.lerp(want,Math.min(1,dt*3));
+  camera.position.set(target.x+radius*Math.cos(el)*Math.sin(az),radius*Math.sin(el),target.z+radius*Math.cos(el)*Math.cos(az));
+  camera.lookAt(target);
+  // units
+  for(const f of fronts){
+    if(f.sinking&&f.bunker.position.y>f.bunkerY-1.8){f.bunker.position.y-=dt*.9;f.bunkerMat.color.lerp(new THREE.Color(0x555550),dt*2)}
+    for(const u of f.units){
+      u.cur+=(u.prog-u.cur)*Math.min(1,dt*(reduce?10:1.2));
+      const bob=u.status==="working"&&!reduce?Math.sin(now/90)*.04:0;
+      const rp=roadPoint(f,sOf(u.cur),u.lane);
+      u.mesh.position.set(rp.x,rp.y+bob,rp.z); u.mesh.rotation.y=rp.rot;
+      u.beacon.visible=u.status!=="idle";
+      u.beacon.material.color.setHex(u.status==="waiting"?0xff5a3c:0xffd24a);
+      const s=reduce?1:1+Math.sin(now/180)*.25;u.beacon.scale.set(s,s,s);
+      if(now<u.fireUntil&&now>u.nextShot&&!reduce){
+        u.nextShot=now+280+Math.random()*200;
+        const tg=new THREE.Vector3();
+        if(u.shootAt==="bunker"){f.bunker.getWorldPosition(tg);tg.y+=.6;tg.x+=(Math.random()-.5)*1.5}
+        else{const q=roadPoint(f,sOf(u.cur)+.14+Math.random()*.06,(Math.random()-.5)*4);tg.set(q.x,q.y,q.z);f.group.localToWorld(tg)}
+        shoot(u,tg);
+      }
+    }
+  }
+  // selection ring
+  if(selUnit){ring.visible=true;selUnit.mesh.getWorldPosition(tmp);ring.position.set(tmp.x,tmp.y+.12,tmp.z)}else ring.visible=false;
+  // fx
+  for(let i=fx.length-1;i>=0;i--){const p=fx[i];p.t+=dt;
+    if(p.kind==="shot"){const k=p.t/.35;p.m.position.lerpVectors(p.a,p.b,Math.min(1,k));p.m.position.y+=Math.sin(Math.min(1,k)*Math.PI)*.6;
+      if(k>=1){scene.remove(p.m);fx.splice(i,1);puff(p.b)}}
+    else{const k=p.t/.6;p.m.scale.setScalar(1+k*2);p.m.material.opacity=.8*(1-k);if(k>=1){scene.remove(p.m);fx.splice(i,1)}}}
+  renderer.render(scene,camera);
+  // overlays
+  const w=new THREE.Vector3();
+  if(selUnit){selUnit.mesh.getWorldPosition(w);place(document.getElementById("bub"),w,2.4)}
+  document.querySelectorAll("#marks .mark").forEach(el=>{const u=allUnits().find(x=>x.id===el.dataset.unit);u.mesh.getWorldPosition(w);place(el,w,2.6)});
+  document.querySelectorAll("#labels .flabel").forEach(el=>{const f=fronts[+el.dataset.front];const q=roadPoint(f,0);w.set(q.x,q.y,q.z+2.2);f.group.localToWorld(w);place(el,w,0)});
+  requestAnimationFrame(loop);
+}
+resize();renderHUD();requestAnimationFrame(loop);
+</script>
+</body>
+</html>

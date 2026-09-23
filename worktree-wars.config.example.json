@@ -1,0 +1,6 @@
+{
+  "repoPath": "/absolute/path/to/target/repo",
+  "testCommand": ["pnpm", "test"],
+  "defaultModel": "sonnet",
+  "port": 4477
+}
