@@ -16,10 +16,29 @@ export interface PrState {
   state: "open" | "merged" | "closed";
 }
 
-/** One git worktree of the target repo: an island. */
+/** A repository the user chose to monitor. Its linked worktrees are islands. */
+export interface Repo {
+  /** Stable id derived from the main worktree path. */
+  id: string;
+  /** Main worktree path. */
+  path: string;
+  /** Folder name, for labels. */
+  name: string;
+  /** Argument array run by "Run tests" in any of its worktrees. */
+  testCommand: string[];
+}
+
+/** A git repo found on disk that the user may want to monitor. */
+export interface RepoSuggestion {
+  path: string;
+  name: string;
+}
+
+/** One linked git worktree of a monitored repo: an island. */
 export interface Front {
   /** Stable id derived from the worktree path. */
   id: string;
+  repoId: string;
   path: string;
   /** Short branch name, or null when HEAD is detached. */
   branch: string | null;
@@ -85,6 +104,7 @@ export interface DiffFile {
 }
 
 export interface WarState {
+  repos: Record<string, Repo>;
   fronts: Record<string, Front>;
   units: Record<string, Unit>;
   permissions: Record<string, PermissionRequest>;
@@ -93,4 +113,4 @@ export interface WarState {
 
 export const emptyTests = (): TestsState => ({ status: "unknown", passed: 0, failed: 0, outputTail: "" });
 
-export const emptyState = (): WarState => ({ fronts: {}, units: {}, permissions: {}, diffs: {} });
+export const emptyState = (): WarState => ({ repos: {}, fronts: {}, units: {}, permissions: {}, diffs: {} });

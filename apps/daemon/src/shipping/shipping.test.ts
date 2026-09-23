@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TestsState } from "@ww/shared";
-import { storeWithFront, tick } from "../units/testkit.ts";
+import { storeWithFront, TEST_REPO, tick } from "../units/testkit.ts";
 import { Shipping, type RunResult, type Runner } from "./shipping.ts";
 
 type Call = { cmd: string; args: string[]; cwd: string };
@@ -25,7 +25,7 @@ describe("Shipping.runTests", () => {
     const store = storeWithFront();
     const { run, calls } = fakeRunner({ pnpm: { exitCode: 1, stdout: "Tests  1 failed | 4 passed (5)" } });
     const saved: TestsState[] = [];
-    const s = new Shipping({ store, testCommand: ["pnpm", "test"], run, saveTests: (_, t) => saved.push(t) });
+    const s = new Shipping({ store, run, saveTests: (_, t) => saved.push(t) });
     const statuses: string[] = [];
     store.subscribe((ev) => ev.type === "tests.result" && statuses.push(ev.tests.status));
 
@@ -39,13 +39,22 @@ describe("Shipping.runTests", () => {
 
   it("counts a non-zero exit with no summary as one failure", async () => {
     const { run } = fakeRunner({ make: { exitCode: 2, stdout: "boom" } });
-    const s = new Shipping({ store: storeWithFront(), testCommand: ["make", "check"], run });
+    const store = storeWithFront();
+    store.emit({ type: "repo.upserted", repo: { ...TEST_REPO, testCommand: ["make", "check"] } });
+    const s = new Shipping({ store, run });
     await expect(s.runTests("f1")).resolves.toMatchObject({ status: "failed", failed: 1, outputTail: "boom" });
+  });
+
+  it("asks for a test command when the repo has none", async () => {
+    const store = storeWithFront();
+    store.emit({ type: "repo.upserted", repo: { ...TEST_REPO, testCommand: [] } });
+    await expect(new Shipping({ store, run: fakeRunner({}).run }).runTests("f1")).rejects.toThrow(/No test command/);
+    expect(store.state.fronts.f1?.tests.status).toBe("unknown");
   });
 
   it("restores saved results for fronts that appear", async () => {
     const store = storeWithFront();
-    new Shipping({ store, testCommand: ["true"], run: fakeRunner({}).run, loadTests: () => failing });
+    new Shipping({ store, run: fakeRunner({}).run, loadTests: () => failing });
     expect(store.state.fronts.f1?.tests.status).toBe("failed");
   });
 });
@@ -55,14 +64,14 @@ describe("Shipping PRs", () => {
     const store = storeWithFront();
     store.emit({ type: "tests.result", frontId: "f1", tests: failing });
     const { run, calls } = fakeRunner({});
-    await expect(new Shipping({ store, testCommand: ["true"], run }).openPr("f1")).rejects.toThrow(/bunker/);
+    await expect(new Shipping({ store, run }).openPr("f1")).rejects.toThrow(/bunker/);
     expect(calls).toEqual([]);
   });
 
   it("pushes, creates the PR and raises the gold flag", async () => {
     const store = storeWithFront();
     const { run, calls } = fakeRunner({ "gh pr create": { stdout: "https://github.com/o/r/pull/7\n" } });
-    const pr = await new Shipping({ store, testCommand: ["true"], run }).openPr("f1");
+    const pr = await new Shipping({ store, run }).openPr("f1");
     expect(calls.map((c) => [c.cmd, ...c.args].join(" "))).toEqual([
       "git push -u origin feat/f1",
       "gh pr create --fill --head feat/f1",
@@ -76,19 +85,19 @@ describe("Shipping PRs", () => {
     const { run } = fakeRunner({
       "gh pr create": { exitCode: 1, stderr: 'a pull request for branch "feat/f1" into branch "main" already exists:\nhttps://github.com/o/r/pull/9' },
     });
-    await expect(new Shipping({ store, testCommand: ["true"], run }).openPr("f1")).resolves.toMatchObject({ number: 9 });
+    await expect(new Shipping({ store, run }).openPr("f1")).resolves.toMatchObject({ number: 9 });
   });
 
   it("reports push failures", async () => {
     const { run } = fakeRunner({ "git push": { exitCode: 128, stderr: "fatal: no remote 'origin'" } });
-    await expect(new Shipping({ store: storeWithFront(), testCommand: ["true"], run }).openPr("f1")).rejects.toThrow(/no remote/);
+    await expect(new Shipping({ store: storeWithFront(), run }).openPr("f1")).rejects.toThrow(/no remote/);
   });
 
   it("merges an open PR and wins the island", async () => {
     const store = storeWithFront();
     store.emit({ type: "pr.opened", frontId: "f1", number: 7, url: "u" });
     const { run, calls } = fakeRunner({});
-    await new Shipping({ store, testCommand: ["true"], run }).mergePr("f1");
+    await new Shipping({ store, run }).mergePr("f1");
     expect(calls[0]?.args).toEqual(["pr", "merge", "7", "--squash"]);
     expect(store.state.fronts.f1?.pr?.state).toBe("merged");
   });
@@ -97,7 +106,7 @@ describe("Shipping PRs", () => {
     const store = storeWithFront();
     let view: Partial<RunResult> = { exitCode: 1, stderr: 'no pull requests found for branch "feat/f1"' };
     const run: Runner = async () => ({ exitCode: view.exitCode ?? 0, stdout: view.stdout ?? "", stderr: view.stderr ?? "", all: (view.stdout ?? "") + (view.stderr ?? "") });
-    const s = new Shipping({ store, testCommand: ["true"], run });
+    const s = new Shipping({ store, run });
 
     await s.pollPr("f1");
     expect(store.state.fronts.f1?.pr).toBeNull();
@@ -116,7 +125,7 @@ describe("Shipping PRs", () => {
   it("stops polling when gh is not installed", async () => {
     let calls = 0;
     const run: Runner = async () => (calls++, { exitCode: 1, stdout: "", stderr: "gh: spawn gh ENOENT", all: "gh: spawn gh ENOENT" });
-    const s = new Shipping({ store: storeWithFront(), testCommand: ["true"], run, log: () => {} });
+    const s = new Shipping({ store: storeWithFront(), run, log: () => {} });
     await s.pollPr("f1");
     await s.pollPr("f1");
     await tick();

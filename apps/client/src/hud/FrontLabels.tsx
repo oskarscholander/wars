@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { frontAnchor, overlayRef } from "../overlay.ts";
-import { sortedFronts, useStore } from "../store.ts";
-import { frontLabel } from "../world/look.ts";
+import { frontTitle, sortedFronts, useStore } from "../store.ts";
 
 /** Branch name tags floating under each island. */
 export function FrontLabels() {
@@ -19,7 +18,7 @@ export function FrontLabels() {
             aria-pressed={f.id === selectedFrontId}
             onClick={() => selectFront(f.id === selectedFrontId ? null : f.id)}
           >
-            {frontLabel(f)}
+            {frontTitle(war, f)}
           </button>
         </div>
       ))}

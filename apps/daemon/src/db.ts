@@ -63,6 +63,12 @@ export class Db {
         created_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS units_front ON units(front_id);
+      CREATE TABLE IF NOT EXISTS repos (
+        id TEXT PRIMARY KEY,
+        path TEXT NOT NULL UNIQUE,
+        test_command TEXT NOT NULL,
+        added_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS front_tests (
         front_id TEXT PRIMARY KEY,
         tests TEXT NOT NULL
@@ -101,6 +107,28 @@ export class Db {
         reply: u.reply,
         createdAt: u.createdAt,
       });
+  }
+
+  listRepos(): { id: string; path: string; testCommand: string[] }[] {
+    const rows = this.#db.prepare("SELECT id, path, test_command FROM repos ORDER BY added_at").all() as {
+      id: string;
+      path: string;
+      test_command: string;
+    }[];
+    return rows.map((r) => ({ id: r.id, path: r.path, testCommand: JSON.parse(r.test_command) as string[] }));
+  }
+
+  saveRepo(repo: { id: string; path: string; testCommand: string[] }): void {
+    this.#db
+      .prepare(
+        `INSERT INTO repos (id, path, test_command, added_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET test_command = excluded.test_command`,
+      )
+      .run(repo.id, repo.path, JSON.stringify(repo.testCommand), Date.now());
+  }
+
+  deleteRepo(id: string): void {
+    this.#db.prepare("DELETE FROM repos WHERE id = ?").run(id);
   }
 
   saveTests(frontId: string, tests: TestsState): void {

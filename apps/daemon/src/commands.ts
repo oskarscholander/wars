@@ -7,8 +7,18 @@ export function parseClientCommand(raw: unknown): ClientCommand | null {
   if (typeof raw !== "object" || raw === null) return null;
   const m = raw as Record<string, unknown>;
   switch (m.type) {
+    case "repo.add":
+      return str(m.path, 4096) ? { type: m.type, path: m.path } : null;
+    case "repo.remove":
+      return str(m.repoId, 64) ? { type: m.type, repoId: m.repoId } : null;
+    case "repo.update":
+      return str(m.repoId, 64) && Array.isArray(m.testCommand) && m.testCommand.length <= 64 && m.testCommand.every((a) => typeof a === "string" && a.length <= 4096)
+        ? { type: m.type, repoId: m.repoId, testCommand: m.testCommand as string[] }
+        : null;
+    case "repo.suggest":
+      return { type: m.type };
     case "front.create":
-      return str(m.branch, 200) ? { type: m.type, branch: m.branch } : null;
+      return str(m.repoId, 64) && str(m.branch, 200) ? { type: m.type, repoId: m.repoId, branch: m.branch } : null;
     case "unit.create":
       return str(m.frontId, 64) && str(m.name, 80) && UNIT_MODELS.includes(m.model as UnitModel)
         ? { type: m.type, frontId: m.frontId, name: m.name, model: m.model as UnitModel }

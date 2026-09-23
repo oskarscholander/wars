@@ -11,31 +11,33 @@ const sameGitInfo = (a: Front, b: Front) =>
  * Turns a fresh worktree listing into the events that bring `current` up to date.
  * Tests and PR state on existing fronts are kept; only git facts are refreshed.
  */
-export function diffFronts(current: Record<string, Front>, trees: Worktree[]): ServerEvent[] {
+export function diffFronts(current: Record<string, Front>, trees: Worktree[], repoId: string): ServerEvent[] {
   const events: ServerEvent[] = [];
+  const mine = Object.values(current).filter((f) => f.repoId === repoId);
   const seen = new Set<string>();
   for (const t of linkedWorktrees(trees)) {
     const id = frontIdFor(t.path);
     seen.add(id);
     const prev = current[id];
     const git = { path: t.path, branch: t.branch, head: t.head, locked: t.locked, prunable: t.prunable };
-    const next: Front = prev ? { ...prev, ...git } : { id, ...git, tests: emptyTests(), pr: null };
+    const next: Front = prev ? { ...prev, ...git } : { id, repoId, ...git, tests: emptyTests(), pr: null };
     if (!prev || !sameGitInfo(prev, next)) events.push({ type: "front.upserted", front: next });
   }
-  for (const id of Object.keys(current)) {
-    if (!seen.has(id)) events.push({ type: "front.removed", frontId: id });
+  for (const f of mine) {
+    if (!seen.has(f.id)) events.push({ type: "front.removed", frontId: f.id });
   }
   return events;
 }
 
 export interface DiscoveryOptions {
+  repoId: string;
   repoPath: string;
   store: Store;
   intervalMs?: number;
   log?: (msg: string) => void;
 }
 
-/** Polls `git worktree list` and watches `.git/worktrees/` for immediate refreshes. */
+/** Polls one repo's `git worktree list` and watches `.git/worktrees/` for immediate refreshes. */
 export class Discovery {
   #opts: Required<DiscoveryOptions>;
   #timer: NodeJS.Timeout | null = null;
@@ -83,7 +85,8 @@ export class Discovery {
   async #refreshOnce(): Promise<void> {
     try {
       const trees = await listWorktrees(this.#opts.repoPath);
-      for (const ev of diffFronts(this.#opts.store.state.fronts, trees)) this.#opts.store.emit(ev);
+      if (!this.#opts.store.state.repos[this.#opts.repoId]) return;
+      for (const ev of diffFronts(this.#opts.store.state.fronts, trees, this.#opts.repoId)) this.#opts.store.emit(ev);
       this.#lastError = "";
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

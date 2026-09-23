@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { emitTool } from "./events.ts";
-import { applyEvent, emptyState, type ClientCommand, type ServerEvent, type UnitModel, type WarState } from "@ww/shared";
+import { applyEvent, emptyState, type ClientCommand, type Front, type RepoSuggestion, type ServerEvent, type UnitModel, type WarState } from "@ww/shared";
 
 export type ConnectionStatus = "connecting" | "open" | "offline";
 
@@ -27,6 +27,9 @@ interface ClientStore {
   reportFor: string | null;
   /** Diff signature the user approved, per front, so "Open report" hides until it changes. */
   approved: Record<string, string>;
+  reposOpen: boolean;
+  /** Latest `repo.suggestions` reply; null while loading. */
+  suggestions: RepoSuggestion[] | null;
 
   apply: (ev: ServerEvent) => void;
   setConnection: (c: ConnectionStatus) => void;
@@ -39,6 +42,8 @@ interface ClientStore {
   openReport: (frontId: string) => void;
   closeReport: () => void;
   approve: (frontId: string) => void;
+  openRepos: () => void;
+  closeRepos: () => void;
 }
 
 let toastSeq = 0;
@@ -56,8 +61,11 @@ export const useStore = create<ClientStore>((set, get) => ({
   focusTick: 0,
   reportFor: null,
   approved: {},
+  reposOpen: false,
+  suggestions: null,
 
   apply: (ev) => {
+    if (ev.type === "repo.suggestions") return set({ suggestions: ev.suggestions });
     const prev = get();
     const war = applyEvent(prev.war, ev);
     let { selectedFrontId, selectedUnitId, deployingOn } = prev;
@@ -99,6 +107,11 @@ export const useStore = create<ClientStore>((set, get) => ({
     set({ reportFor: frontId });
   },
   closeReport: () => set({ reportFor: null }),
+  openRepos: () => {
+    set({ reposOpen: true, suggestions: null });
+    get().send({ type: "repo.suggest" });
+  },
+  closeRepos: () => set({ reposOpen: false }),
   approve: (frontId) =>
     set((s) => ({ approved: { ...s.approved, [frontId]: diffSignature(s.war, frontId) }, reportFor: null })),
 }));
@@ -137,8 +150,23 @@ export const pendingFor = (war: WarState, unitId: string) =>
     .filter((p) => p.unitId === unitId)
     .sort((a, b) => a.createdAt - b.createdAt);
 
-/** Fronts in a stable display order (by branch, then path). */
-export const sortedFronts = (war: WarState) =>
-  Object.values(war.fronts).sort(
-    (a, b) => (a.branch ?? "~").localeCompare(b.branch ?? "~") || a.path.localeCompare(b.path),
+export const sortedRepos = (war: WarState) =>
+  Object.values(war.repos).sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+
+/** Fronts in a stable display order: grouped by repo, then by branch. */
+export const sortedFronts = (war: WarState): Front[] => {
+  const order = new Map(sortedRepos(war).map((r, i) => [r.id, i]));
+  return Object.values(war.fronts).sort(
+    (a, b) =>
+      (order.get(a.repoId) ?? 0) - (order.get(b.repoId) ?? 0) ||
+      (a.branch ?? "~").localeCompare(b.branch ?? "~") ||
+      a.path.localeCompare(b.path),
   );
+};
+
+/** "branch", or "repo · branch" once more than one repo is monitored. */
+export const frontTitle = (war: WarState, f: Front) => {
+  const branch = f.branch ?? `detached @ ${f.head.slice(0, 7)}`;
+  const repo = war.repos[f.repoId];
+  return Object.keys(war.repos).length > 1 && repo ? `${repo.name} · ${branch}` : branch;
+};

@@ -9,6 +9,12 @@ const without = <T>(rec: Record<string, T>, key: string): Record<string, T> => {
   return next;
 };
 
+function removeFront(state: WarState, frontId: string): WarState {
+  const units = Object.fromEntries(Object.entries(state.units).filter(([, u]) => u.frontId !== frontId));
+  const permissions = Object.fromEntries(Object.entries(state.permissions).filter(([, p]) => p.frontId !== frontId));
+  return { ...state, fronts: without(state.fronts, frontId), units, permissions, diffs: without(state.diffs, frontId) };
+}
+
 /**
  * Applies one daemon event. The daemon runs its own state through this same
  * function before broadcasting, so snapshot + events always equals daemon state.
@@ -19,16 +25,24 @@ export function applyEvent(state: WarState, ev: ServerEvent): WarState {
     case "state.snapshot":
       return ev.state;
 
+    case "repo.upserted":
+      return { ...state, repos: { ...state.repos, [ev.repo.id]: ev.repo } };
+
+    case "repo.removed": {
+      const gone = Object.values(state.fronts).filter((f) => f.repoId === ev.repoId);
+      const next = gone.reduce((s, f) => removeFront(s, f.id), state);
+      return { ...next, repos: without(next.repos, ev.repoId) };
+    }
+
+    case "repo.suggestions":
+      return state;
+
     case "front.upserted":
+      if (!state.repos[ev.front.repoId]) return state;
       return { ...state, fronts: { ...state.fronts, [ev.front.id]: ev.front } };
 
-    case "front.removed": {
-      const units = Object.fromEntries(Object.entries(state.units).filter(([, u]) => u.frontId !== ev.frontId));
-      const permissions = Object.fromEntries(
-        Object.entries(state.permissions).filter(([, p]) => p.frontId !== ev.frontId),
-      );
-      return { fronts: without(state.fronts, ev.frontId), units, permissions, diffs: without(state.diffs, ev.frontId) };
-    }
+    case "front.removed":
+      return removeFront(state, ev.frontId);
 
     case "unit.upserted":
       if (!state.fronts[ev.unit.frontId]) return state;

@@ -177,3 +177,32 @@ command failed whenever a `FAIL` file existed in the worktree.
   the chip read "Won".
 - After a daemon restart, feat/tiptap-comments still showed its failing
   bunker (restored from SQLite), and polling found an external PR #7 on it.
+
+## Beyond v1: pick repos in the app (2026-09-23)
+
+The spec had one repo, set by `repoPath` in a config file. Now you pick repos
+inside Wars, and several can be monitored at once.
+
+- A Repos sheet, opened from the top bar or automatically on an empty first
+  run. It suggests main worktrees found up to two levels below `~/Repos`,
+  `~/code`, `~/src`, `~/Projects` and similar folders (or `scanDirs`), and
+  accepts any typed path. A path inside a repo or one of its worktrees resolves
+  to the main worktree.
+- Monitored repos are stored in SQLite, and each gets its own worktree watcher.
+  Removing a repo stops watching it and never touches files on disk.
+- Test commands are detected per repo and editable in the sheet. The config
+  `testCommand` is only a fallback.
+- Islands are grouped into one row per repo (stacked in portrait). Labels and
+  chips read `repo · branch` once more than one repo is monitored. New fronts
+  pick their repo in the panel.
+- The config file is optional. A legacy `repoPath` is added as a monitored repo,
+  and the example placeholder is ignored.
+- Protocol: `repo.upserted`/`repo.removed` events and a `repo.suggestions`
+  reply; `repo.add`/`repo.remove`/`repo.update`/`repo.suggest` commands.
+  `front.create` takes a `repoId`, and fronts carry `repoId`.
+
+Demo: from empty state the sheet opened and suggested both scratch repos. Clicking
+one added it with 4 islands. Typing a path inside the second repo's worktree added
+that repo, with `npm test` detected. A new front in the second repo was created from
+the panel. Both repos survived a daemon restart, and removing one took its islands off
+the map while its worktrees stayed on disk.

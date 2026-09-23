@@ -1,9 +1,10 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { checkRepo, ConfigError, loadConfig } from "./config.ts";
+import { ConfigError, loadConfig } from "./config.ts";
 import { Db } from "./db.ts";
 import { Diffs } from "./diffs.ts";
 import { Shipping } from "./shipping/shipping.ts";
-import { Discovery } from "./discovery.ts";
+import { RepoManager } from "./repos.ts";
+import { expandHome } from "./git/repos.ts";
 import { buildServer, HOST } from "./server.ts";
 import { Store } from "./store.ts";
 import { ensureToken, tokenPath } from "./token.ts";
@@ -12,15 +13,18 @@ import { PermissionQueue } from "./units/permissions.ts";
 
 async function main() {
   const config = await loadConfig();
-  await checkRepo(config);
   const token = await ensureToken();
   const store = new Store();
-  const discovery = new Discovery({ repoPath: config.repoPath, store });
-  await discovery.start();
-
   const db = new Db();
+  const repos = new RepoManager({
+    store,
+    db,
+    ...(config.testCommand ? { defaultTestCommand: config.testCommand } : {}),
+    ...(config.scanDirs ? { scanRoots: config.scanDirs.map(expandHome) } : {}),
+    log: console.log,
+  });
   const permissions = new PermissionQueue(store);
-  const diffs = new Diffs(store, config.repoPath);
+  const diffs = new Diffs(store);
   const units = new UnitManager({
     store,
     db,
@@ -32,25 +36,31 @@ async function main() {
     log: console.log,
   });
 
+  // Units and shipping subscribe to the store, so restore repos after they exist.
+  await repos.start();
+  if (config.repoPath) {
+    await repos.add(config.repoPath).catch((err) => console.log(`config repoPath skipped: ${err.message}`));
+  }
+
   const shipping = new Shipping({
     store,
-    testCommand: config.testCommand,
     saveTests: (id, tests) => db.saveTests(id, tests),
     loadTests: (id) => db.loadTests(id),
   });
   void shipping.pollAll();
   const prPoll = setInterval(() => void shipping.pollAll(), 30_000);
 
-  const app = await buildServer({ config, store, discovery, units, permissions, diffs, shipping, token });
+  const app = await buildServer({ config, store, repos, units, permissions, diffs, shipping, token });
   await app.listen({ host: HOST, port: config.port });
 
+  const r = Object.keys(store.state.repos).length;
   const n = Object.keys(store.state.fronts).length;
   console.log(`worktree-wars daemon on ws://${HOST}:${config.port}/ws`);
-  console.log(`repo ${config.repoPath}: ${n} worktree${n === 1 ? "" : "s"}`);
+  console.log(`monitoring ${r} repo${r === 1 ? "" : "s"} with ${n} worktree${n === 1 ? "" : "s"}; add repos in the app`);
   console.log(`token in ${tokenPath()}`);
 
   const shutdown = async () => {
-    discovery.stop();
+    repos.stop();
     clearInterval(prPoll);
     units.stopAll();
     await app.close();

@@ -52,14 +52,8 @@ pnpm monorepo, TypeScript everywhere, Node 20+.
 
 ## Config
 
-`worktree-wars.config.json` in the repo root (gitignored, with a committed
-`.example`):
-
-```json
-{
-  "repoPath": "/absolute/path/to/target/repo",
-  "testCommand": ["pnpm", "test"],
-  "defaultModel": "sonnet",
-  "port": 4477
-}
-```
+Repos to monitor are picked in the app (Repos sheet) and stored in SQLite; several
+can be monitored at once. `worktree-wars.config.json` in the repo root is optional
+(gitignored, with a committed `.example`): `defaultModel`, `port`, `scanDirs` (where
+repo suggestions come from), `testCommand` (fallback when detection finds nothing),
+`anthropicApiKey`, and a legacy `repoPath` that is added as a monitored repo on start.

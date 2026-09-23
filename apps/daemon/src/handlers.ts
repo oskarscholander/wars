@@ -1,8 +1,8 @@
-import type { ClientCommand } from "@ww/shared";
+import type { ClientCommand, ServerEvent } from "@ww/shared";
 import type { Config } from "./config.ts";
 import type { Diffs } from "./diffs.ts";
-import type { Discovery } from "./discovery.ts";
 import { createWorktree, WorktreeError } from "./git/createWorktree.ts";
+import { RepoError, type RepoManager } from "./repos.ts";
 import type { Store } from "./store.ts";
 import { ShippingError, type Shipping } from "./shipping/shipping.ts";
 import { UnitError, type UnitManager } from "./units/manager.ts";
@@ -11,7 +11,7 @@ import type { PermissionQueue } from "./units/permissions.ts";
 export interface Deps {
   config: Config;
   store: Store;
-  discovery: Discovery;
+  repos: RepoManager;
   units: UnitManager;
   permissions: PermissionQueue;
   diffs: Diffs;
@@ -21,26 +21,43 @@ export interface Deps {
 /** Thrown for failures the user should see verbatim. */
 export class CommandError extends Error {}
 
-export async function handleCommand(cmd: ClientCommand, deps: Deps): Promise<void> {
+/** Runs a command. May return an event meant only for the client that sent it. */
+export async function handleCommand(cmd: ClientCommand, deps: Deps): Promise<ServerEvent | void> {
   try {
-    await dispatch(cmd, deps);
+    return await dispatch(cmd, deps);
   } catch (err) {
-    if (err instanceof UnitError || err instanceof ShippingError) throw new CommandError(err.message);
+    if (err instanceof UnitError || err instanceof ShippingError || err instanceof RepoError) {
+      throw new CommandError(err.message);
+    }
     throw err;
   }
 }
 
-async function dispatch(cmd: ClientCommand, deps: Deps): Promise<void> {
+async function dispatch(cmd: ClientCommand, deps: Deps): Promise<ServerEvent | void> {
   switch (cmd.type) {
-    case "front.create":
+    case "repo.add":
+      await deps.repos.add(cmd.path);
+      return;
+    case "repo.remove":
+      deps.repos.remove(cmd.repoId);
+      return;
+    case "repo.update":
+      deps.repos.updateTestCommand(cmd.repoId, cmd.testCommand);
+      return;
+    case "repo.suggest":
+      return { type: "repo.suggestions", suggestions: await deps.repos.suggest() };
+    case "front.create": {
+      const repo = deps.store.state.repos[cmd.repoId];
+      if (!repo) throw new CommandError("Pick a repo first");
       try {
-        await createWorktree(deps.config.repoPath, cmd.branch);
+        await createWorktree(repo.path, cmd.branch);
       } catch (err) {
         if (err instanceof WorktreeError) throw new CommandError(err.message);
         throw err;
       }
-      await deps.discovery.refresh();
+      await deps.repos.refresh(repo.id);
       return;
+    }
     case "unit.create":
       deps.units.create(cmd.frontId, cmd.model, cmd.name);
       return;

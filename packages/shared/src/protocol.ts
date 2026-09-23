@@ -1,8 +1,12 @@
-import type { DiffFile, Front, PermissionRequest, TestsState, Unit, UnitModel, UnitStatus, WarState } from "./types.ts";
+import type { DiffFile, Front, PermissionRequest, Repo, RepoSuggestion, TestsState, Unit, UnitModel, UnitStatus, WarState } from "./types.ts";
 
 /** Daemon → client. Every message is `{ type, ...payload }`. */
 export type ServerEvent =
   | { type: "state.snapshot"; state: WarState }
+  | { type: "repo.upserted"; repo: Repo }
+  | { type: "repo.removed"; repoId: string }
+  /** Reply to `repo.suggest`, sent only to the asking client. Not state. */
+  | { type: "repo.suggestions"; suggestions: RepoSuggestion[] }
   | { type: "front.upserted"; front: Front }
   | { type: "front.removed"; frontId: string }
   | { type: "unit.upserted"; unit: Unit }
@@ -20,7 +24,11 @@ export type ServerEvent =
 
 /** Client → daemon. */
 export type ClientCommand =
-  | { type: "front.create"; branch: string }
+  | { type: "repo.add"; path: string }
+  | { type: "repo.remove"; repoId: string }
+  | { type: "repo.update"; repoId: string; testCommand: string[] }
+  | { type: "repo.suggest" }
+  | { type: "front.create"; repoId: string; branch: string }
   | { type: "unit.create"; frontId: string; model: UnitModel; name: string }
   | { type: "unit.order"; unitId: string; text: string }
   | { type: "permission.resolve"; id: string; allow: boolean; message?: string }

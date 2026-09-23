@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { UNIT_MODELS, type Front, type Unit, type UnitModel } from "@ww/shared";
-import { unitsOnFront, useStore } from "../store.ts";
+import { sortedRepos, unitsOnFront, useStore } from "../store.ts";
 import { frontLabel } from "../world/look.ts";
 import { UNIT_KIND } from "../world/UnitModels.tsx";
 
@@ -93,6 +93,10 @@ export function Panel() {
     el?.setSelectionRange(el.value.length, el.value.length);
   }, [focusTick]);
   const [model, setModel] = useState<UnitModel>("sonnet");
+  const repos = sortedRepos(war);
+  const [repoChoice, setRepoChoice] = useState<string | null>(null);
+  const newFrontRepo = repos.find((r) => r.id === repoChoice) ?? repos[0];
+  const openRepos = useStore((s) => s.openRepos);
   const online = connection === "open";
 
   const submit = (e: FormEvent) => {
@@ -103,7 +107,9 @@ export function Panel() {
       ? send({ type: "unit.order", unitId: unit.id, text: value })
       : front
         ? (deploy(front.id, model, value), true)
-        : send({ type: "front.create", branch: value });
+        : newFrontRepo
+          ? send({ type: "front.create", repoId: newFrontRepo.id, branch: value })
+          : (openRepos(), false);
     if (ok) setText("");
   };
 
@@ -120,7 +126,9 @@ export function Panel() {
       <div className="unit">
         <div>
           <h2>{frontLabel(front)}</h2>
-          <span className="kind">{front.path}</span>
+          <span className="kind">
+            {war.repos[front.repoId]?.name} · {front.path}
+          </span>
         </div>
         <div className="stats">
           <TestsStat front={front} />
@@ -136,9 +144,11 @@ export function Panel() {
       <p className="idle-msg">
         {!online
           ? "Waiting for the daemon. Start it with pnpm dev."
-          : Object.keys(war.fronts).length
-            ? "Each island is a worktree and each unit is an agent. Tap an island to deploy, or a unit to give it orders."
-            : "No worktrees yet. Open a front to create one."}
+          : !repos.length
+            ? "Pick the repos to monitor with Repos in the top bar."
+            : Object.keys(war.fronts).length
+              ? "Each island is a worktree and each unit is an agent. Tap an island to deploy, or a unit to give it orders."
+              : "No worktrees yet. Open a front to create one."}
       </p>
     );
 
@@ -146,7 +156,9 @@ export function Panel() {
     ? `Radio ${unit.name}…`
     : front
       ? `Name the new ${UNIT_KIND[model].split(" · ")[1]}, or tap Deploy`
-      : "New front: branch name, e.g. feat/comments";
+      : newFrontRepo
+        ? `New front in ${newFrontRepo.name}: branch name`
+        : "Add a repo first";
 
   return (
     <section className="panel" aria-label="Orders">
@@ -188,6 +200,18 @@ export function Panel() {
         )}
       </div>
 
+      {!unit && !front && repos.length > 1 && (
+        <div className="hints">
+          <div className="seg" role="radiogroup" aria-label="Repo for the new front">
+            {repos.map((r) => (
+              <button key={r.id} role="radio" aria-checked={newFrontRepo?.id === r.id} onClick={() => setRepoChoice(r.id)}>
+                {r.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <form className="say" onSubmit={submit} autoComplete="off">
         <div className="field">
           <input
@@ -196,7 +220,7 @@ export function Panel() {
             placeholder={placeholder}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            disabled={!online}
+            disabled={!online || (!unit && !front && !newFrontRepo)}
             spellCheck={!!unit}
           />
         </div>

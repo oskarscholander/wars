@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import type { Front, WarState } from "@ww/shared";
-import { sortedFronts, useStore } from "../store.ts";
-import { frontLabel } from "../world/look.ts";
+import { frontTitle, sortedFronts, useStore } from "../store.ts";
 
 const needsYou = (war: WarState, frontId?: string) =>
   Object.values(war.permissions).filter((p) => !frontId || p.frontId === frontId).length;
@@ -23,6 +22,8 @@ export function TopBar() {
   const connection = useStore((s) => s.connection);
   const selectedFrontId = useStore((s) => s.selectedFrontId);
   const selectFront = useStore((s) => s.selectFront);
+  const openRepos = useStore((s) => s.openRepos);
+  const repoCount = Object.keys(war.repos).length;
   const fronts = useMemo(() => sortedFronts(war), [war]);
   const waitingAll = needsYou(war);
 
@@ -35,6 +36,10 @@ export function TopBar() {
 
   return (
     <nav className="top" aria-label="Fronts">
+      <button className="repos-chip" onClick={openRepos} disabled={connection !== "open"}>
+        <b>Repos</b>
+        <small>{repoCount ? `${repoCount} monitored` : "Pick repos"}</small>
+      </button>
       <button aria-pressed={!selectedFrontId} onClick={() => selectFront(null)}>
         <b>All fronts</b>
         <small className={allSub.tone}>{allSub.text}</small>
@@ -43,7 +48,7 @@ export function TopBar() {
         const sub = frontSubtitle(war, f);
         return (
           <button key={f.id} aria-pressed={f.id === selectedFrontId} onClick={() => selectFront(f.id)} title={f.path}>
-            <b>{frontLabel(f)}</b>
+            <b>{frontTitle(war, f)}</b>
             <small className={sub.tone}>{sub.text}</small>
           </button>
         );

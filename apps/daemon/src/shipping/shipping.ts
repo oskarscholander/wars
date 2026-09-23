@@ -25,7 +25,6 @@ export class ShippingError extends Error {}
 
 export interface ShippingOptions {
   store: Store;
-  testCommand: [string, ...string[]];
   run?: Runner;
   /** Persist test results so bunkers survive a daemon restart. */
   saveTests?: (frontId: string, tests: TestsState) => void;
@@ -71,9 +70,13 @@ export class Shipping {
     if (this.#testing.has(frontId)) throw new ShippingError("Tests are already running on this front");
     this.#testing.add(frontId);
     const previous = front.tests;
+    const [cmd, ...args] = this.#o.store.state.repos[front.repoId]?.testCommand ?? [];
+    if (!cmd) {
+      this.#testing.delete(frontId);
+      throw new ShippingError("No test command for this repo. Set one in Repos.");
+    }
     this.#setTests(frontId, { ...previous, status: "running" });
     try {
-      const [cmd, ...args] = this.#o.testCommand;
       const r = await this.#o.run(cmd, args, { cwd: front.path, timeoutMs: TEST_TIMEOUT_MS });
       const counts = parseTestCounts(r.all);
       const tests: TestsState = {

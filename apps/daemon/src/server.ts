@@ -64,7 +64,8 @@ export async function buildServer(deps: Deps & { token: string }): Promise<Fasti
         const cmd = parseClientCommand(raw);
         if (!cmd) return send({ type: "error", message: "Unknown or invalid command" });
         try {
-          await handleCommand(cmd, deps);
+          const reply = await handleCommand(cmd, deps);
+          if (reply) send(reply);
         } catch (err) {
           const message = err instanceof CommandError ? err.message : "Internal error";
           if (!(err instanceof CommandError)) console.error(`command ${cmd.type} failed`, err);

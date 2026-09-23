@@ -6,8 +6,11 @@ import { Bubble } from "./hud/Bubble.tsx";
 import { Panel } from "./hud/Panel.tsx";
 import { Toast } from "./hud/Toast.tsx";
 import { ReportSheet } from "./hud/ReportSheet.tsx";
+import { RepoSheet } from "./hud/RepoSheet.tsx";
+import { useAutoOpenRepos } from "./hud/useAutoOpenRepos.ts";
 
 export function App() {
+  useAutoOpenRepos();
   return (
     <>
       <World />
@@ -17,6 +20,7 @@ export function App() {
       <TopBar />
       <Panel />
       <ReportSheet />
+      <RepoSheet />
       <Toast />
     </>
   );

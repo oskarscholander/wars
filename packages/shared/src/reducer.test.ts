@@ -3,8 +3,11 @@ import { applyEvent, replay } from "./reducer.ts";
 import { emptyState, emptyTests, type Front, type Unit } from "./types.ts";
 import type { ServerEvent } from "./protocol.ts";
 
-const front = (id: string): Front => ({
+const REPO = { type: "repo.upserted" as const, repo: { id: "r", path: "/repo", name: "repo", testCommand: ["true"] } };
+
+const front = (id: string, repoId = "r"): Front => ({
   id,
+  repoId,
   path: `/repo-${id}`,
   branch: `feat/${id}`,
   head: "abc",
@@ -34,13 +37,14 @@ const unit = (id: string, frontId: string): Unit => ({
 
 describe("applyEvent", () => {
   it("snapshot replaces state", () => {
-    const s = replay([{ type: "front.upserted", front: front("a") }]);
+    const s = replay([REPO, { type: "front.upserted", front: front("a") }]);
     const next = applyEvent(s, { type: "state.snapshot", state: emptyState() });
     expect(next).toEqual(emptyState());
   });
 
   it("removing a front drops its units, permissions and diffs", () => {
     const s = replay([
+      REPO,
       { type: "front.upserted", front: front("a") },
       { type: "front.upserted", front: front("b") },
       { type: "unit.upserted", unit: unit("u1", "a") },
@@ -65,6 +69,7 @@ describe("applyEvent", () => {
 
   it("streams text into the current message and resets on a new one", () => {
     const events: ServerEvent[] = [
+      REPO,
       { type: "front.upserted", front: front("a") },
       { type: "unit.upserted", unit: unit("u1", "a") },
       { type: "unit.text", unitId: "u1", messageId: "m1", delta: "Hel" },
@@ -77,6 +82,7 @@ describe("applyEvent", () => {
 
   it("tracks PR open then merged", () => {
     const s = replay([
+      REPO,
       { type: "front.upserted", front: front("a") },
       { type: "pr.opened", frontId: "a", number: 7, url: "u" },
       { type: "pr.merged", frontId: "a" },
@@ -84,8 +90,23 @@ describe("applyEvent", () => {
     expect(s.fronts.a?.pr).toEqual({ number: 7, url: "u", state: "merged" });
   });
 
+  it("ignores fronts of unknown repos and removing a repo drops its fronts", () => {
+    expect(replay([{ type: "front.upserted", front: front("a", "nope") }]).fronts).toEqual({});
+    const s = replay([
+      REPO,
+      { type: "repo.upserted", repo: { ...REPO.repo, id: "r2", path: "/r2" } },
+      { type: "front.upserted", front: front("a") },
+      { type: "front.upserted", front: front("b", "r2") },
+      { type: "unit.upserted", unit: unit("u1", "a") },
+      { type: "repo.removed", repoId: "r" },
+    ]);
+    expect(Object.keys(s.repos)).toEqual(["r2"]);
+    expect(Object.keys(s.fronts)).toEqual(["b"]);
+    expect(s.units).toEqual({});
+  });
+
   it("does not mutate the previous state", () => {
-    const s = replay([{ type: "front.upserted", front: front("a") }]);
+    const s = replay([REPO, { type: "front.upserted", front: front("a") }]);
     const frozen = JSON.parse(JSON.stringify(s));
     applyEvent(s, { type: "front.removed", frontId: "a" });
     expect(s).toEqual(frozen);

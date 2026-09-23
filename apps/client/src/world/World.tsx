@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { CameraControls } from "@react-three/drei";
-import { sortedFronts, unitsOnFront, useStore } from "../store.ts";
+import { sortedFronts, sortedRepos, unitsOnFront, useStore } from "../store.ts";
 import { useReducedMotion } from "../useReducedMotion.ts";
 import { Island } from "./Island.tsx";
 import { ISLAND_HALF, islandPositions } from "./layout.ts";
@@ -21,7 +21,13 @@ function Scene() {
   const portrait = size.width < size.height;
 
   const fronts = useMemo(() => sortedFronts(war), [war]);
-  const positions = useMemo(() => islandPositions(fronts.length, portrait), [fronts.length, portrait]);
+  const groups = useMemo(
+    () => sortedRepos(war).map((r) => fronts.filter((f) => f.repoId === r.id).length),
+    [war, fronts],
+  );
+  const groupKey = groups.join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- recompute only when the grouping changes
+  const positions = useMemo(() => islandPositions(groups, portrait), [groupKey, portrait]);
 
   const focus = useMemo(() => {
     const box = new THREE.Box3();
