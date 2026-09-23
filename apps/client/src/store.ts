@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { emitTool } from "./events.ts";
-import { applyEvent, emptyState, type ClientCommand, type Front, type RepoSuggestion, type ServerEvent, type UnitModel, type WarState } from "@ww/shared";
+import { applyEvent, emptyState, type ClientCommand, type Front, type LogEntry, type RepoSuggestion, type ServerEvent, type UnitModel, type WarState } from "@ww/shared";
 
 export type ConnectionStatus = "connecting" | "open" | "offline";
 
@@ -42,6 +42,10 @@ interface ClientStore {
   /** Diff signature the user approved, per front, so "Open report" hides until it changes. */
   approved: Record<string, string>;
   reposOpen: boolean;
+  /** Terminal transcripts fetched from the daemon, per unit. A cache: refetched on reconnect. */
+  logs: Record<string, LogEntry[]>;
+  /** Narrow screens: the selected unit's terminal as a sheet. */
+  terminalOpen: boolean;
   /** Delete-worktree dialog. `dirty`/`locked` are git's refusals; `pending` while the daemon works. */
   deleting: { frontId: string; stage: "confirm" | "dirty" | "locked"; deleteBranch: boolean; pending: boolean; note?: string } | null;
   /** Latest `repo.suggestions` reply; null while loading. */
@@ -63,6 +67,9 @@ interface ClientStore {
   closeReport: () => void;
   approve: (frontId: string) => void;
   openRepos: () => void;
+  /** Fetches a unit's transcript unless it's already cached. */
+  loadLog: (unitId: string) => void;
+  setTerminalOpen: (open: boolean) => void;
   openDelete: (frontId: string) => void;
   closeDelete: () => void;
   setDeleteBranch: (on: boolean) => void;
@@ -88,11 +95,15 @@ export const useStore = create<ClientStore>((set, get) => ({
   reportFor: null,
   approved: {},
   reposOpen: false,
+  logs: {},
+  terminalOpen: false,
   deleting: null,
   suggestions: null,
 
   apply: (ev) => {
     if (ev.type === "repo.suggestions") return set({ suggestions: ev.suggestions });
+    if (ev.type === "unit.history") return set((st) => ({ logs: { ...st.logs, [ev.unitId]: mergeHistory(ev.entries, st.logs[ev.unitId]) } }));
+    if (ev.type === "unit.entry") return set((st) => ({ logs: withEntry(st.logs, ev.entry) }));
     if (ev.type === "front.deleted") {
       const name = ev.branch ?? "worktree";
       set({ deleting: null });
@@ -108,6 +119,9 @@ export const useStore = create<ClientStore>((set, get) => ({
     }
     const prev = get();
     const war = applyEvent(prev.war, ev);
+    // Transcript upkeep: streamed text grows its assistant line; a fresh snapshot means refetching.
+    if (ev.type === "unit.text") set((st) => ({ logs: withDelta(st.logs, ev.unitId, ev.messageId, ev.delta) }));
+    if (ev.type === "state.snapshot") set({ logs: {} });
     let { selectedFrontId, selectedUnitId, deployingOn } = prev;
     if (ev.type === "unit.upserted" && !prev.war.units[ev.unit.id] && ev.unit.frontId === deployingOn) {
       selectedUnitId = ev.unit.id;
@@ -169,6 +183,11 @@ export const useStore = create<ClientStore>((set, get) => ({
     get().send({ type: "repo.suggest" });
   },
   closeRepos: () => set({ reposOpen: false }),
+  loadLog: (unitId) => {
+    if (get().logs[unitId]) return;
+    if (get().send({ type: "unit.history", unitId })) set((st) => ({ logs: { ...st.logs, [unitId]: st.logs[unitId] ?? [] } }));
+  },
+  setTerminalOpen: (terminalOpen) => set({ terminalOpen }),
   openDelete: (frontId) => set({ deleting: { frontId, stage: "confirm", deleteBranch: false, pending: false } }),
   closeDelete: () => set({ deleting: null }),
   setDeleteBranch: (on) => set((s) => (s.deleting ? { deleting: { ...s.deleting, deleteBranch: on } } : {})),
@@ -241,3 +260,34 @@ export const frontTitle = (war: WarState, f: Front) => {
   const repo = war.repos[f.repoId];
   return Object.keys(war.repos).length > 1 && repo ? `${repo.name} · ${branch}` : branch;
 };
+
+/** Adds a live line. An assistant line may already exist locally if its first delta arrived first. */
+function withEntry(logs: Record<string, LogEntry[]>, entry: LogEntry): Record<string, LogEntry[]> {
+  const list = logs[entry.unitId];
+  if (!list) return logs; // not open in a terminal; history will include it
+  const i = entry.messageId ? list.findIndex((e) => e.messageId === entry.messageId) : -1;
+  if (i >= 0) {
+    const next = [...list];
+    next[i] = { ...entry, text: list[i]!.text || entry.text };
+    return { ...logs, [entry.unitId]: next };
+  }
+  if (list.some((e) => e.id === entry.id)) return logs;
+  return { ...logs, [entry.unitId]: [...list, entry] };
+}
+
+function withDelta(logs: Record<string, LogEntry[]>, unitId: string, messageId: string, delta: string): Record<string, LogEntry[]> {
+  const list = logs[unitId];
+  if (!list || messageId.startsWith("error-")) return logs;
+  const i = list.findIndex((e) => e.messageId === messageId);
+  const next = [...list];
+  if (i >= 0) next[i] = { ...next[i]!, text: next[i]!.text + delta };
+  else next.push({ id: -Date.now(), unitId, at: Date.now(), kind: "assistant", text: delta, messageId });
+  return { ...logs, [unitId]: next };
+}
+
+/** History is authoritative; keep live lines that arrived after it was read. */
+function mergeHistory(history: LogEntry[], live: LogEntry[] | undefined): LogEntry[] {
+  const last = history.at(-1)?.id ?? 0;
+  const newer = (live ?? []).filter((e) => e.id > last && !history.some((h) => h.messageId && h.messageId === e.messageId));
+  return [...history, ...newer];
+}

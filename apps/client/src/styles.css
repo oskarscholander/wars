@@ -299,7 +299,7 @@ canvas {
 
 .panel {
   position: fixed;
-  left: 0;
+  left: var(--ww-left, 0px);
   right: 0;
   bottom: 0;
   z-index: 6;
@@ -746,6 +746,225 @@ canvas {
 .check code {
   font-family: var(--mono);
   font-size: 12.5px;
+}
+
+.terminals {
+  position: fixed;
+  left: 0;
+  top: calc(64px + env(safe-area-inset-top, 0px));
+  bottom: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 8px 8px;
+  overflow-y: auto;
+}
+.terminals-empty {
+  margin-top: 8px;
+  background: rgba(16, 20, 17, 0.9);
+  color: #cfc8b0;
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+.terminal {
+  flex: 1 1 0;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  background: #111512;
+  color: #d9d3bd;
+  border-radius: 10px;
+  border: 2px solid #232a24;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+.terminal.selected {
+  border-color: var(--brass);
+}
+.terminal header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #1a201b;
+  font-family: var(--sans);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.terminal header b {
+  font-family: var(--display);
+  font-size: 15px;
+  color: #efe8cf;
+}
+.t-kind,
+.t-state,
+.t-mode {
+  color: #8f8a74;
+  font-size: 12px;
+}
+.t-mode {
+  margin-left: auto;
+  border: 1px solid #39413a;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.t-status {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #5e6a5f;
+  flex: 0 0 auto;
+}
+.t-status.working {
+  background: #ffd24a;
+}
+.t-status.waiting {
+  background: #ff5a3c;
+}
+.t-status.error {
+  background: #c9472f;
+}
+.t-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  line-height: 1.45;
+}
+.t-body > * {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.t-empty {
+  color: #6f6b5a;
+}
+.t-order {
+  color: #f2d27a;
+}
+.t-prompt {
+  color: var(--brass);
+  font-weight: 600;
+}
+.t-assistant {
+  color: #e6e0c9;
+  font-family: var(--sans);
+  font-size: 13.5px;
+}
+.t-assistant code,
+.t-assistant pre {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: #1d241e;
+  border-radius: 4px;
+}
+.t-assistant code {
+  padding: 1px 4px;
+}
+.t-assistant pre {
+  padding: 6px 8px;
+  margin: 4px 0;
+  white-space: pre-wrap;
+}
+.t-assistant a {
+  color: #8cb6e8;
+}
+.t-tool {
+  color: #8f9a8b;
+}
+.t-tool b {
+  color: #b9c4b4;
+  font-weight: 600;
+}
+.t-dot {
+  color: #6fbf73;
+}
+.t-perm {
+  color: #ffb4a5;
+}
+.t-perm code {
+  color: #ffd9cf;
+}
+.t-decision.ok {
+  color: #7fcf86;
+}
+.t-decision.no {
+  color: #ff8f7a;
+}
+.t-error {
+  color: #ff8f7a;
+}
+.t-result {
+  color: #6f6b5a;
+  text-align: center;
+  font-size: 11.5px;
+}
+.t-working .dots span {
+  background: #8f8a74;
+}
+.t-ask {
+  border: 1px solid #7a3b2e;
+  background: #2a1714;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #ffd9cf;
+  font-family: var(--sans);
+  font-size: 13px;
+}
+.t-ask pre {
+  font-family: var(--mono);
+  font-size: 12px;
+  margin: 6px 0;
+  white-space: pre-wrap;
+  color: #fff;
+}
+.t-ask .acts {
+  display: flex;
+  gap: 6px;
+}
+.t-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-top: 1px solid #232a24;
+  background: #0d100e;
+}
+.t-input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #efe8cf;
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 4px 0;
+}
+.t-input input:focus {
+  outline: none;
+}
+.terminal:focus-within {
+  border-color: var(--brass);
+}
+.terminal-sheet {
+  height: 86%;
+}
+.terminal-sheet .terminal {
+  flex: 1;
+}
+@media (min-width: 900px) {
+  .terminal-btn {
+    display: none;
+  }
 }
 
 .toast {

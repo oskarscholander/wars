@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ServerEvent, WarState } from "@ww/shared";
 import { applyEvent, emptyState } from "@ww/shared";
 import { RepoManager } from "./repos.ts";
+import { UnitLog } from "./units/log.ts";
 import { detectTestCommand, findRepos, resolveRepoRoot } from "./git/repos.ts";
 import { worktreeCreatedAt } from "./git/worktrees.ts";
 import { removeWorktree } from "./git/removeWorktree.ts";
@@ -80,7 +81,7 @@ describe("daemon over WebSocket", () => {
       queryFn: () => (async function* () {})(),
       changedFiles: async () => 0,
     });
-    const app = await buildServer({ config, store, repos, units, permissions, diffs: new Diffs(store), shipping: new Shipping({ store }), db, token: "secret" });
+    const app = await buildServer({ config, store, repos, units, permissions, diffs: new Diffs(store), shipping: new Shipping({ store }), db, transcript: new UnitLog(store, db), token: "secret" });
     await app.listen({ host: "127.0.0.1", port: 0 });
     const { port } = app.server.address() as { port: number };
 

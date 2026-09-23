@@ -5,6 +5,7 @@ import type { Db } from "../db.ts";
 import type { Store } from "../store.ts";
 import { TurnMapper, type Effect } from "./mapMessage.ts";
 import type { PermissionQueue } from "./permissions.ts";
+import type { UnitLog } from "./log.ts";
 
 export type QueryFn = (params: { prompt: string; options: Options }) => AsyncIterable<SDKMessage>;
 
@@ -16,6 +17,8 @@ export interface UnitManagerDeps {
   changedFiles: (front: Front) => Promise<number>;
   /** Optional passthrough; by default the SDK uses the user's `claude login`. */
   anthropicApiKey?: string;
+  /** Terminal transcript; optional so tests can leave it out. */
+  transcript?: UnitLog;
   /** Permission mode for new units. Defaults to auto. */
   defaultPermissionMode?: PermissionMode;
   log?: (msg: string) => void;
@@ -85,6 +88,7 @@ export class UnitManager {
 
   order(unitId: string, text: string): void {
     if (!this.#deps.store.state.units[unitId]) throw new UnitError("That unit no longer exists");
+    this.#deps.transcript?.add(unitId, "order", text);
     const queue = this.#queues.get(unitId) ?? [];
     queue.push(text);
     this.#queues.set(unitId, queue);
@@ -155,6 +159,7 @@ export class UnitManager {
 
     const ac = new AbortController();
     this.#aborts.set(unitId, ac);
+    const started = Date.now();
     const mapper = new TurnMapper(front.path);
     let result: ResultEffect | null = null;
 
@@ -213,6 +218,13 @@ export class UnitManager {
     }
     const after = store.state.units[unitId];
     if (!after) return false;
+    const transcript = this.#deps.transcript;
+    if (transcript) {
+      transcript.flush(unitId);
+      const secs = Math.max(1, Math.round((Date.now() - started) / 1000));
+      const spent = Math.max(0, result.costUsd - after.costUsd);
+      transcript.add(unitId, "result", `${result.ok ? "Done" : "Stopped"} · ${secs}s${spent ? ` · $${spent.toFixed(2)}` : ""} · ${filesChanged} file${filesChanged === 1 ? "" : "s"} changed`);
+    }
     this.#patch(unitId, {
       turns: after.turns + 1,
       filesChanged,

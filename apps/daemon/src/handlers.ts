@@ -9,6 +9,7 @@ import type { Store } from "./store.ts";
 import { ShippingError, type Shipping } from "./shipping/shipping.ts";
 import { UnitError, type UnitManager } from "./units/manager.ts";
 import type { PermissionQueue } from "./units/permissions.ts";
+import type { UnitLog } from "./units/log.ts";
 
 export interface Deps {
   config: Config;
@@ -19,6 +20,7 @@ export interface Deps {
   diffs: Diffs;
   shipping: Shipping;
   db: Db;
+  transcript: UnitLog;
 }
 
 /** Thrown for failures the user should see verbatim. */
@@ -102,6 +104,9 @@ async function dispatch(cmd: ClientCommand, deps: Deps): Promise<ServerEvent | v
     case "unit.create":
       deps.units.create(cmd.frontId, cmd.model, cmd.name, cmd.permissionMode);
       return;
+    case "unit.history":
+      if (!deps.store.state.units[cmd.unitId]) throw new CommandError("That unit no longer exists");
+      return { type: "unit.history", unitId: cmd.unitId, entries: deps.transcript.history(cmd.unitId) };
     case "unit.update":
       deps.units.setPermissionMode(cmd.unitId, cmd.permissionMode);
       return;

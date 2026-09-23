@@ -8,6 +8,7 @@ import { Toast } from "./hud/Toast.tsx";
 import { ReportSheet } from "./hud/ReportSheet.tsx";
 import { RepoSheet } from "./hud/RepoSheet.tsx";
 import { DeleteSheet } from "./hud/DeleteSheet.tsx";
+import { Terminals } from "./hud/Terminals.tsx";
 import { useAutoOpenRepos } from "./hud/useAutoOpenRepos.ts";
 
 export function App() {
@@ -19,6 +20,7 @@ export function App() {
       <Markers />
       <Bubble />
       <TopBar />
+      <Terminals />
       <Panel />
       <ReportSheet />
       <RepoSheet />

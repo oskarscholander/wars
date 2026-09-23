@@ -130,3 +130,16 @@ export interface WarState {
 export const emptyTests = (): TestsState => ({ status: "unknown", passed: 0, failed: 0, outputTail: "" });
 
 export const emptyState = (): WarState => ({ repos: {}, fronts: {}, units: {}, permissions: {}, diffs: {} });
+
+/** One line in a unit's terminal transcript. */
+export interface LogEntry {
+  /** Increasing id, unique across all units. */
+  id: number;
+  unitId: string;
+  at: number;
+  kind: "order" | "assistant" | "tool" | "permission" | "decision" | "error" | "result";
+  text: string;
+  /** Assistant entries: the message the streamed `unit.text` deltas belong to. */
+  messageId?: string;
+  tool?: string;
+}

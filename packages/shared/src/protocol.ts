@@ -1,4 +1,4 @@
-import type { DiffFile, Front, PermissionMode, PermissionRequest, Repo, RepoSuggestion, TestsState, Unit, UnitModel, UnitStatus, WarState } from "./types.ts";
+import type { DiffFile, Front, LogEntry, PermissionMode, PermissionRequest, Repo, RepoSuggestion, TestsState, Unit, UnitModel, UnitStatus, WarState } from "./types.ts";
 
 /** Daemon → client. Every message is `{ type, ...payload }`. */
 export type ServerEvent =
@@ -28,6 +28,10 @@ export type ServerEvent =
       code?: "dirty" | "locked";
       frontId?: string;
     }
+  /** A new line in a unit's terminal. Assistant lines then grow via `unit.text` deltas with the same messageId. */
+  | { type: "unit.entry"; entry: LogEntry }
+  /** Reply to `unit.history`, sent only to the asking client: the latest entries, oldest first. */
+  | { type: "unit.history"; unitId: string; entries: LogEntry[] }
   /** Reply to a successful `front.delete`, sent only to the asking client. */
   | { type: "front.deleted"; frontId: string; branch: string | null; branchDeleted: boolean; branchNote?: string };
 
@@ -43,6 +47,7 @@ export type ClientCommand =
   | { type: "unit.create"; frontId: string; model: UnitModel; name: string; permissionMode?: PermissionMode }
   | { type: "unit.order"; unitId: string; text: string }
   | { type: "unit.update"; unitId: string; permissionMode: PermissionMode }
+  | { type: "unit.history"; unitId: string }
   | { type: "permission.resolve"; id: string; allow: boolean; message?: string }
   | { type: "diff.request"; frontId: string }
   | { type: "tests.run"; frontId: string }

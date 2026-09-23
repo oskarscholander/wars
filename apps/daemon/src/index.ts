@@ -10,6 +10,7 @@ import { Store } from "./store.ts";
 import { ensureToken, tokenPath } from "./token.ts";
 import { UnitManager } from "./units/manager.ts";
 import { PermissionQueue } from "./units/permissions.ts";
+import { UnitLog } from "./units/log.ts";
 
 async function main() {
   const config = await loadConfig();
@@ -25,6 +26,7 @@ async function main() {
   });
   const permissions = new PermissionQueue(store);
   const diffs = new Diffs(store);
+  const transcript = new UnitLog(store, db);
   const units = new UnitManager({
     store,
     db,
@@ -34,6 +36,7 @@ async function main() {
     changedFiles: async (front) => (await diffs.refresh(front.id)).length,
     ...(config.anthropicApiKey ? { anthropicApiKey: config.anthropicApiKey } : {}),
     defaultPermissionMode: config.permissionMode,
+    transcript,
     log: console.log,
   });
 
@@ -51,7 +54,7 @@ async function main() {
   void shipping.pollAll();
   const prPoll = setInterval(() => void shipping.pollAll(), 30_000);
 
-  const app = await buildServer({ config, store, repos, units, permissions, diffs, shipping, db, token });
+  const app = await buildServer({ config, store, repos, units, permissions, diffs, shipping, db, transcript, token });
   await app.listen({ host: HOST, port: config.port });
 
   const r = Object.keys(store.state.repos).length;

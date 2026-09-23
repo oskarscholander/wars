@@ -367,3 +367,26 @@ spacing guarantees and stable positions.
 - Tests over 300 seeds: every road stays on land, HQ and flag on solid ground,
   every island inside its square, a spread of sizes and areas (over 1.6×) and
   all three terrain styles.
+
+## Agent terminals beside the island (2026-09-23)
+
+- Selecting an island opens a column on the left with a terminal for every
+  agent on it, and frames the island in the space to the right (the bottom
+  panel moves over too). On screens narrower than 900 px, a Terminal button
+  opens the selected agent's terminal as a sheet.
+- Each terminal shows:
+  - Header: status, model and permission mode.
+  - Full transcript: `› orders`, the agent's replies (streamed, with links and
+    code), `⏺ tool calls`, permission prompts and your decisions, errors, and a
+    result line per turn (`Done · 8s · $0.02 · 1 file changed`).
+  - An inline Allow/Deny prompt while it's waiting.
+  - A prompt line to send orders (they queue while it works) with ↑/↓ history.
+  - It follows new output unless you scroll up. A terminal that needs you, or
+    the one you picked, scrolls into view.
+- Daemon: `UnitLog` records transcripts in SQLite (`unit_log`, latest 1000 per
+  unit) and broadcasts each new line as `unit.entry`. Assistant lines grow from
+  the `unit.text` deltas clients already get. Clients fetch history with
+  `unit.history`, so reloads and reconnects lose nothing.
+- Verified with real sessions: Sonnet (Auto) wrote a file and ran `ls` with
+  no prompts. Haiku asked inline, Allow went through, and the transcripts were
+  intact after a reload.

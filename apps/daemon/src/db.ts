@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
-import type { PermissionMode, TestsState, Unit, UnitModel } from "@ww/shared";
+import type { LogEntry, PermissionMode, TestsState, Unit, UnitModel } from "@ww/shared";
 import { wwHome } from "./token.ts";
 
 /** Fields that survive a daemon restart. Status and queues are runtime-only. */
@@ -71,6 +71,16 @@ export class Db {
         test_command TEXT NOT NULL,
         added_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS unit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        unit_id TEXT NOT NULL,
+        at INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        text TEXT NOT NULL,
+        message_id TEXT,
+        tool TEXT
+      );
+      CREATE INDEX IF NOT EXISTS unit_log_unit ON unit_log(unit_id, id);
       CREATE TABLE IF NOT EXISTS front_tests (
         front_id TEXT PRIMARY KEY,
         tests TEXT NOT NULL
@@ -117,8 +127,43 @@ export class Db {
       });
   }
 
+  /** Appends a terminal line and returns it with its id. Keeps the latest 1000 per unit. */
+  appendLog(e: Omit<LogEntry, "id">): LogEntry {
+    const r = this.#db
+      .prepare("INSERT INTO unit_log (unit_id, at, kind, text, message_id, tool) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(e.unitId, e.at, e.kind, e.text, e.messageId ?? null, e.tool ?? null);
+    const id = Number(r.lastInsertRowid);
+    if (id % 50 === 0) {
+      this.#db
+        .prepare("DELETE FROM unit_log WHERE unit_id = ? AND id <= (SELECT id FROM unit_log WHERE unit_id = ? ORDER BY id DESC LIMIT 1 OFFSET 1000)")
+        .run(e.unitId, e.unitId);
+    }
+    return { id, ...e };
+  }
+
+  updateLogText(id: number, text: string): void {
+    this.#db.prepare("UPDATE unit_log SET text = ? WHERE id = ?").run(text, id);
+  }
+
+  /** The latest `limit` lines for a unit, oldest first. */
+  logFor(unitId: string, limit = 400): LogEntry[] {
+    const rows = this.#db
+      .prepare("SELECT * FROM unit_log WHERE unit_id = ? ORDER BY id DESC LIMIT ?")
+      .all(unitId, limit) as { id: number; unit_id: string; at: number; kind: LogEntry["kind"]; text: string; message_id: string | null; tool: string | null }[];
+    return rows.reverse().map((r) => ({
+      id: r.id,
+      unitId: r.unit_id,
+      at: r.at,
+      kind: r.kind,
+      text: r.text,
+      ...(r.message_id ? { messageId: r.message_id } : {}),
+      ...(r.tool ? { tool: r.tool } : {}),
+    }));
+  }
+
   /** Forgets a deleted worktree's units and test results. */
   forgetFront(frontId: string): void {
+    this.#db.prepare("DELETE FROM unit_log WHERE unit_id IN (SELECT id FROM units WHERE front_id = ?)").run(frontId);
     this.#db.prepare("DELETE FROM units WHERE front_id = ?").run(frontId);
     this.#db.prepare("DELETE FROM front_tests WHERE front_id = ?").run(frontId);
   }

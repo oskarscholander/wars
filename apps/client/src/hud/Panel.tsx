@@ -211,6 +211,9 @@ export function Panel() {
         {unit && (
           <>
             <PermissionSwitch unit={unit} online={online} />
+            <button className="terminal-btn" onClick={() => useStore.getState().setTerminalOpen(true)}>
+              Terminal
+            </button>
             <button disabled={!online} onClick={() => openReport(unit.frontId)}>
               Field report
             </button>

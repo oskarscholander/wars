@@ -35,6 +35,8 @@ export function parseClientCommand(raw: unknown): ClientCommand | null {
             ...(m.permissionMode ? { permissionMode: m.permissionMode as PermissionMode } : {}),
           }
         : null;
+    case "unit.history":
+      return str(m.unitId, 64) ? { type: m.type, unitId: m.unitId } : null;
     case "unit.update":
       return str(m.unitId, 64) && PERMISSION_MODES.includes(m.permissionMode as PermissionMode)
         ? { type: m.type, unitId: m.unitId, permissionMode: m.permissionMode as PermissionMode }

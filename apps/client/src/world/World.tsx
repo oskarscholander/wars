@@ -7,6 +7,7 @@ import { useReducedMotion } from "../useReducedMotion.ts";
 import { Island } from "./Island.tsx";
 import { scatterIslands, type Placement } from "./layout.ts";
 import { islandShape } from "./terrain.ts";
+import { terminalColumnWidth } from "../hud/layout.ts";
 import { COLORS } from "./look.ts";
 import { OverlayProjector } from "./OverlayProjector.tsx";
 import { FxLayer } from "./Fx.tsx";
@@ -134,7 +135,9 @@ function CameraRig({ places }: { places: Map<string, Placement> }) {
     const panelPx = document.querySelector<HTMLElement>(".panel")?.offsetHeight ?? 140;
     const usable = Math.max(0.3, (size.height - TOP_BAR_PX - panelPx) / size.height);
     const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-    const aspect = size.width / size.height;
+    // An island with its terminals open is framed in the space to the right of the column.
+    const inset = dest ? terminalColumnWidth(size.width) : 0;
+    const aspect = (size.width - inset) / size.height;
 
     const ext = focus.getSize(new THREE.Vector3());
     // Footprint as seen from this azimuth, then foreshortened by the polar angle.
@@ -148,7 +151,12 @@ function CameraRig({ places }: { places: Map<string, Placement> }) {
     const worldPerPx = (2 * dist * tanV) / size.height;
     const shift = (((panelPx - TOP_BAR_PX) / 2) * worldPerPx) / Math.max(0.2, Math.cos(polar));
     const toward = new THREE.Vector3(Math.sin(azimuth), 0, Math.cos(azimuth));
-    const target = focus.getCenter(new THREE.Vector3()).setY(0).addScaledVector(toward, shift);
+    const right = new THREE.Vector3(Math.cos(azimuth), 0, -Math.sin(azimuth));
+    const target = focus
+      .getCenter(new THREE.Vector3())
+      .setY(0)
+      .addScaledVector(toward, shift)
+      .addScaledVector(right, -(inset / 2) * worldPerPx);
     const pos = new THREE.Vector3().setFromSphericalCoords(dist, polar, azimuth).add(target);
 
     void c.setLookAt(pos.x, pos.y, pos.z, target.x, target.y, target.z, animate);
