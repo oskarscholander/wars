@@ -2,3 +2,5 @@ node_modules
 dist
 *.sqlite
 worktree-wars.config.json
+*.tsbuildinfo
+.vite

@@ -1,0 +1,30 @@
+import { UNIT_MODELS, type ClientCommand, type UnitModel } from "@ww/shared";
+
+const str = (v: unknown, max = 10_000): v is string => typeof v === "string" && v.length > 0 && v.length <= max;
+
+/** Validates untrusted client input. Returns null for anything malformed. */
+export function parseClientCommand(raw: unknown): ClientCommand | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const m = raw as Record<string, unknown>;
+  switch (m.type) {
+    case "front.create":
+      return str(m.branch, 200) ? { type: m.type, branch: m.branch } : null;
+    case "unit.create":
+      return str(m.frontId, 64) && str(m.name, 80) && UNIT_MODELS.includes(m.model as UnitModel)
+        ? { type: m.type, frontId: m.frontId, name: m.name, model: m.model as UnitModel }
+        : null;
+    case "unit.order":
+      return str(m.unitId, 64) && str(m.text, 100_000) ? { type: m.type, unitId: m.unitId, text: m.text } : null;
+    case "permission.resolve":
+      if (!str(m.id, 64) || typeof m.allow !== "boolean") return null;
+      if (m.message !== undefined && typeof m.message !== "string") return null;
+      return { type: m.type, id: m.id, allow: m.allow, ...(m.message ? { message: m.message } : {}) };
+    case "diff.request":
+    case "tests.run":
+    case "pr.open":
+    case "pr.merge":
+      return str(m.frontId, 64) ? { type: m.type, frontId: m.frontId } : null;
+    default:
+      return null;
+  }
+}
