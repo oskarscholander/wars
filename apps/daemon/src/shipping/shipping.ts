@@ -146,9 +146,13 @@ export class Shipping {
     const pr = r.exitCode === 0 ? parsePrView(r.stdout) : null;
     if (r.exitCode !== 0 && !/no pull requests found/i.test(r.all)) return; // auth or network trouble: keep what we know
     if (samePr(current.pr, pr)) return;
-    if (pr?.state === "open") this.#o.store.emit({ type: "pr.opened", frontId, number: pr.number, url: pr.url });
-    else if (pr?.state === "merged" && current.pr?.number === pr.number) this.#o.store.emit({ type: "pr.merged", frontId });
-    else this.#o.store.emit({ type: "front.upserted", front: { ...current, pr } });
+    // A PR we watched get merged is news; anything else polling finds (existing PRs
+    // at startup, ones opened elsewhere) just updates the front quietly.
+    if (pr?.state === "merged" && current.pr?.state === "open" && current.pr.number === pr.number) {
+      this.#o.store.emit({ type: "pr.merged", frontId });
+    } else {
+      this.#o.store.emit({ type: "front.upserted", front: { ...current, pr } });
+    }
   }
 
   async pollAll(): Promise<void> {

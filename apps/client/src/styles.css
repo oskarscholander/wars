@@ -696,6 +696,51 @@ canvas {
 .toast.show {
   display: block;
 }
+.toast.actionable.show {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px 4px 4px;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+}
+.toast-main {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  text-align: left;
+}
+.toast-main:hover {
+  background: rgba(38, 36, 28, 0.12);
+}
+.toast-link {
+  color: #26241c;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(38, 36, 28, 0.12);
+  text-decoration: none;
+}
+.toast-link:hover {
+  background: rgba(38, 36, 28, 0.22);
+}
+.toast-close {
+  border: 0;
+  background: transparent;
+  color: #26241c;
+  font-size: 18px;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+.toast-close:hover {
+  background: rgba(38, 36, 28, 0.12);
+}
 
 @media (prefers-reduced-motion: reduce) {
   * {

@@ -240,3 +240,13 @@ through the WebSocket (the sandbox filesystem records real birth times). The
 120-day island is dense and littered, with its road half grown over. The new one
 is sparse and clean. Layout checks over 840 random configurations kept the
 spacing guarantees and stable positions.
+
+## Clickable toasts (2026-09-23)
+
+- Toasts about a front (test results, a PR you opened, a won front) name the
+  front, and clicking one selects it and flies the camera there. PR toasts add
+  a "View PR ↗" link. Actionable toasts stay for 7 s, pause while hovered, and
+  have a close button.
+- PR polling no longer announces PRs it merely finds (existing ones at
+  startup, ones opened elsewhere). Those update the flag quietly. Only a merge
+  of a PR we saw open is announced.

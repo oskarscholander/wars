@@ -110,16 +110,30 @@ describe("Shipping PRs", () => {
 
     await s.pollPr("f1");
     expect(store.state.fronts.f1?.pr).toBeNull();
+    const kinds: string[] = [];
+    store.subscribe((ev) => kinds.push(ev.type));
     view = { stdout: '{"number":5,"state":"OPEN","url":"u5"}' };
     await s.pollPr("f1");
     expect(store.state.fronts.f1?.pr).toEqual({ number: 5, url: "u5", state: "open" });
     view = { stdout: '{"number":5,"state":"MERGED","url":"u5"}' };
     await s.pollPr("f1");
     expect(store.state.fronts.f1?.pr?.state).toBe("merged");
+    // Found PRs update quietly; only a merge we watched happen is announced.
+    expect(kinds).toEqual(["front.upserted", "pr.merged"]);
     // Network trouble keeps what we know.
     view = { exitCode: 1, stderr: "error connecting to api.github.com" };
     await s.pollPr("f1");
     expect(store.state.fronts.f1?.pr?.state).toBe("merged");
+  });
+
+  it("adopts an already merged PR quietly at startup", async () => {
+    const store = storeWithFront();
+    const kinds: string[] = [];
+    store.subscribe((ev) => kinds.push(ev.type));
+    const run: Runner = async () => ({ exitCode: 0, stdout: '{"number":9,"state":"MERGED","url":"u"}', stderr: "", all: "" });
+    await new Shipping({ store, run }).pollPr("f1");
+    expect(store.state.fronts.f1?.pr?.state).toBe("merged");
+    expect(kinds).toEqual(["front.upserted"]);
   });
 
   it("stops polling when gh is not installed", async () => {

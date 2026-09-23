@@ -4,10 +4,16 @@ import { applyEvent, emptyState, type ClientCommand, type Front, type RepoSugges
 
 export type ConnectionStatus = "connecting" | "open" | "offline";
 
-interface Toast {
+export interface Toast {
   id: number;
   message: string;
+  /** Clicking the toast selects this front and flies the camera there. */
+  frontId?: string;
+  /** Extra link, e.g. the PR on GitHub. */
+  link?: { label: string; href: string };
 }
+
+type ToastExtras = Omit<Toast, "id" | "message">;
 
 interface ClientStore {
   /** Mirror of daemon state: only ever changed by daemon events. */
@@ -36,7 +42,8 @@ interface ClientStore {
   apply: (ev: ServerEvent) => void;
   setConnection: (c: ConnectionStatus) => void;
   send: (cmd: ClientCommand) => boolean;
-  showToast: (message: string) => void;
+  showToast: (message: string, extras?: ToastExtras) => void;
+  dismissToast: () => void;
   selectFront: (id: string | null) => void;
   selectUnit: (id: string | null) => void;
   deploy: (frontId: string, model: UnitModel, name: string) => void;
@@ -83,7 +90,7 @@ export const useStore = create<ClientStore>((set, get) => ({
     set({ war, selectedFrontId, selectedUnitId, deployingOn, reportFor, ...(ev.type === "state.snapshot" ? { synced: true } : {}) });
     if (ev.type === "unit.tool") emitTool(ev.unitId);
     const note = shippingNote(prev.war, ev);
-    if (note) get().showToast(note);
+    if (note) get().showToast(note.message, note);
     if (ev.type === "error") {
       if (ev.command === "unit.create") set({ deployingOn: null });
       get().showToast(ev.message);
@@ -95,7 +102,8 @@ export const useStore = create<ClientStore>((set, get) => ({
     if (!ok) get().showToast("Not connected to the daemon");
     return ok;
   },
-  showToast: (message) => set({ toast: { id: ++toastSeq, message } }),
+  showToast: (message, extras = {}) => set({ toast: { id: ++toastSeq, message, ...extras } }),
+  dismissToast: () => set({ toast: null }),
   selectFront: (selectedFrontId) => set({ selectedFrontId, selectedUnitId: null }),
   selectUnit: (id) => {
     const unit = id ? get().war.units[id] : undefined;
@@ -119,21 +127,25 @@ export const useStore = create<ClientStore>((set, get) => ({
     set((s) => ({ approved: { ...s.approved, [frontId]: diffSignature(s.war, frontId) }, reportFor: null })),
 }));
 
-/** Toast text for shipping milestones the user just caused or should hear about. */
-function shippingNote(before: WarState, ev: ServerEvent): string | null {
+/** Toast for shipping milestones the user just caused or should hear about. Each points at its front. */
+function shippingNote(before: WarState, ev: ServerEvent): ({ message: string } & ToastExtras) | null {
   const front = "frontId" in ev && typeof ev.frontId === "string" ? before.fronts[ev.frontId] : undefined;
   if (!front) return null;
+  const name = frontTitle(before, front);
+  const prLink = (href: string | undefined) => (href ? { link: { label: "View PR ↗", href } } : {});
   switch (ev.type) {
     case "tests.result": {
       const t = ev.tests;
-      if (t.status === "running" || t.status === "unknown" || before.fronts[ev.frontId]?.tests.status !== "running") return null;
+      if (t.status === "running" || t.status === "unknown" || front.tests.status !== "running") return null;
       const counts = `${t.passed} passed, ${t.failed} failed.`;
-      return t.status === "failed" ? `${counts} Bunker on ${front.branch}` : `${counts} Road clear`;
+      return { message: t.status === "failed" ? `${counts} Bunker on ${name}` : `${counts} Road clear on ${name}`, frontId: front.id };
     }
     case "pr.opened":
-      return front.pr?.number === ev.number && front.pr.state === "open" ? null : `PR #${ev.number} is open. Merge it to take the objective.`;
+      if (front.pr?.number === ev.number && front.pr.state === "open") return null;
+      return { message: `PR #${ev.number} is open on ${name}. Merge it to take the objective.`, frontId: front.id, ...prLink(ev.url) };
     case "pr.merged":
-      return front.pr?.state === "merged" ? null : `Front won · ${front.branch ?? "branch"} merged`;
+      if (front.pr?.state === "merged") return null;
+      return { message: `Front won · ${name} merged`, frontId: front.id, ...prLink(front.pr?.url) };
     default:
       return null;
   }
