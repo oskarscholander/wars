@@ -14,6 +14,11 @@ cp worktree-wars.config.example.json worktree-wars.config.json   # set repoPath
 pnpm dev        # daemon on 127.0.0.1:4477, client on http://127.0.0.1:5173
 ```
 
+Agents use your existing `claude login` (set `anthropicApiKey` in the config to
+pass a key through instead). Opening and merging PRs needs a git remote named
+`origin` and the GitHub CLI (`gh`) signed in. Without `gh`, everything else still
+works and PR polling turns itself off.
+
 The daemon creates its handshake token in `~/.worktree-wars/token` on first run. The
 Vite dev server passes it to the page. Set `WW_CONFIG` or `WW_HOME` to point at a
 different config file or state directory.

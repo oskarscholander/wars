@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
-import type { Unit, UnitModel } from "@ww/shared";
+import type { TestsState, Unit, UnitModel } from "@ww/shared";
 import { wwHome } from "./token.ts";
 
 /** Fields that survive a daemon restart. Status and queues are runtime-only. */
@@ -63,6 +63,10 @@ export class Db {
         created_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS units_front ON units(front_id);
+      CREATE TABLE IF NOT EXISTS front_tests (
+        front_id TEXT PRIMARY KEY,
+        tests TEXT NOT NULL
+      );
     `);
   }
 
@@ -97,6 +101,17 @@ export class Db {
         reply: u.reply,
         createdAt: u.createdAt,
       });
+  }
+
+  saveTests(frontId: string, tests: TestsState): void {
+    this.#db
+      .prepare("INSERT INTO front_tests (front_id, tests) VALUES (?, ?) ON CONFLICT(front_id) DO UPDATE SET tests = excluded.tests")
+      .run(frontId, JSON.stringify(tests));
+  }
+
+  loadTests(frontId: string): TestsState | null {
+    const row = this.#db.prepare("SELECT tests FROM front_tests WHERE front_id = ?").get(frontId) as { tests: string } | undefined;
+    return row ? (JSON.parse(row.tests) as TestsState) : null;
   }
 
   close(): void {

@@ -71,6 +71,8 @@ export const useStore = create<ClientStore>((set, get) => ({
     const reportFor = prev.reportFor && war.fronts[prev.reportFor] ? prev.reportFor : null;
     set({ war, selectedFrontId, selectedUnitId, deployingOn, reportFor });
     if (ev.type === "unit.tool") emitTool(ev.unitId);
+    const note = shippingNote(prev.war, ev);
+    if (note) get().showToast(note);
     if (ev.type === "error") {
       if (ev.command === "unit.create") set({ deployingOn: null });
       get().showToast(ev.message);
@@ -100,6 +102,26 @@ export const useStore = create<ClientStore>((set, get) => ({
   approve: (frontId) =>
     set((s) => ({ approved: { ...s.approved, [frontId]: diffSignature(s.war, frontId) }, reportFor: null })),
 }));
+
+/** Toast text for shipping milestones the user just caused or should hear about. */
+function shippingNote(before: WarState, ev: ServerEvent): string | null {
+  const front = "frontId" in ev && typeof ev.frontId === "string" ? before.fronts[ev.frontId] : undefined;
+  if (!front) return null;
+  switch (ev.type) {
+    case "tests.result": {
+      const t = ev.tests;
+      if (t.status === "running" || t.status === "unknown" || before.fronts[ev.frontId]?.tests.status !== "running") return null;
+      const counts = `${t.passed} passed, ${t.failed} failed.`;
+      return t.status === "failed" ? `${counts} Bunker on ${front.branch}` : `${counts} Road clear`;
+    }
+    case "pr.opened":
+      return front.pr?.number === ev.number && front.pr.state === "open" ? null : `PR #${ev.number} is open. Merge it to take the objective.`;
+    case "pr.merged":
+      return front.pr?.state === "merged" ? null : `Front won · ${front.branch ?? "branch"} merged`;
+    default:
+      return null;
+  }
+}
 
 /** Cheap identity for a front's current diff. */
 export const diffSignature = (war: WarState, frontId: string) =>

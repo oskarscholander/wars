@@ -2,6 +2,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ConfigError, loadConfig } from "./config.ts";
 import { Db } from "./db.ts";
 import { Diffs } from "./diffs.ts";
+import { Shipping } from "./shipping/shipping.ts";
 import { Discovery } from "./discovery.ts";
 import { buildServer, HOST } from "./server.ts";
 import { Store } from "./store.ts";
@@ -30,7 +31,16 @@ async function main() {
     log: console.log,
   });
 
-  const app = await buildServer({ config, store, discovery, units, permissions, diffs, token });
+  const shipping = new Shipping({
+    store,
+    testCommand: config.testCommand,
+    saveTests: (id, tests) => db.saveTests(id, tests),
+    loadTests: (id) => db.loadTests(id),
+  });
+  void shipping.pollAll();
+  const prPoll = setInterval(() => void shipping.pollAll(), 30_000);
+
+  const app = await buildServer({ config, store, discovery, units, permissions, diffs, shipping, token });
   await app.listen({ host: HOST, port: config.port });
 
   const n = Object.keys(store.state.fronts).length;
@@ -40,6 +50,7 @@ async function main() {
 
   const shutdown = async () => {
     discovery.stop();
+    clearInterval(prPoll);
     units.stopAll();
     await app.close();
     db.close();

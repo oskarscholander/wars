@@ -1,30 +1,76 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { UNIT_MODELS, type Unit, type UnitModel } from "@ww/shared";
+import { UNIT_MODELS, type Front, type Unit, type UnitModel } from "@ww/shared";
 import { unitsOnFront, useStore } from "../store.ts";
 import { frontLabel } from "../world/look.ts";
 import { UNIT_KIND } from "../world/UnitModels.tsx";
 
-const QUICK_ORDERS = ["Report what you changed", "Run the tests", "Commit your work"];
+const QUICK_ORDERS = ["Report what you changed", "Commit your work"];
 const DEFAULT_NAME: Record<UnitModel, string> = { opus: "Tank", sonnet: "Squad", haiku: "Scout" };
 
 const fmtTokens = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
 
-function UnitHeader({ unit, branch }: { unit: Unit; branch: string }) {
+function UnitHeader({ unit, front }: { unit: Unit; front: Front }) {
   return (
     <div className="unit">
       <div>
         <h2>{unit.name}</h2>
         <span className="kind">
-          {UNIT_KIND[unit.model]} on {branch}
+          {UNIT_KIND[unit.model]} on {frontLabel(front)}
         </span>
       </div>
       <div className="stats">
+        <TestsStat front={front} />
         <span>{unit.filesChanged} files</span>
         <span>{fmtTokens(unit.inputTokens + unit.outputTokens)} tokens</span>
         <span>${unit.costUsd.toFixed(2)}</span>
         {unit.queuedOrders > 0 && <span>{unit.queuedOrders} queued</span>}
       </div>
     </div>
+  );
+}
+
+const TESTS_LABEL: Record<Front["tests"]["status"], string> = {
+  unknown: "Tests not run",
+  running: "Testing…",
+  passed: "Tests pass",
+  failed: "Tests failing",
+};
+
+function TestsStat({ front }: { front: Front }) {
+  const t = front.tests;
+  const counts = t.status === "passed" || t.status === "failed" ? ` ${t.passed}/${t.passed + t.failed}` : "";
+  return (
+    <span className={t.status === "failed" ? "fail" : t.status === "passed" ? "add" : ""} title={t.outputTail || undefined}>
+      {TESTS_LABEL[t.status]}
+      {counts}
+    </span>
+  );
+}
+
+/** Daemon-side actions for a front: tests, PR, merge. */
+function ShipButtons({ front, online }: { front: Front; online: boolean }) {
+  const send = useStore((s) => s.send);
+  const pr = front.pr;
+  const blocked = front.tests.status === "failed";
+  return (
+    <>
+      <button disabled={!online || front.tests.status === "running"} onClick={() => send({ type: "tests.run", frontId: front.id })}>
+        {front.tests.status === "running" ? "Testing…" : "Run tests"}
+      </button>
+      {pr?.state === "open" ? (
+        <button className="gold" disabled={!online} onClick={() => send({ type: "pr.merge", frontId: front.id })}>
+          Merge PR #{pr.number}
+        </button>
+      ) : pr?.state === "merged" ? null : (
+        <button
+          disabled={!online || blocked || front.tests.status === "running" || !front.branch}
+          title={blocked ? "A failing-test bunker blocks the road" : undefined}
+          onClick={() => send({ type: "pr.open", frontId: front.id })}
+        >
+          Open PR
+        </button>
+      )}
+    </>
   );
 }
 
@@ -68,7 +114,7 @@ export function Panel() {
   };
 
   let header;
-  if (unit && front) header = <UnitHeader unit={unit} branch={frontLabel(front)} />;
+  if (unit && front) header = <UnitHeader unit={unit} front={front} />;
   else if (front)
     header = (
       <div className="unit">
@@ -77,6 +123,8 @@ export function Panel() {
           <span className="kind">{front.path}</span>
         </div>
         <div className="stats">
+          <TestsStat front={front} />
+          {front.pr && <span>PR #{front.pr.number} {front.pr.state}</span>}
           <span>{front.head.slice(0, 7)}</span>
           {front.locked && <span>locked</span>}
           {front.prunable && <span className="fail">prunable</span>}
@@ -110,6 +158,7 @@ export function Panel() {
             <button disabled={!online} onClick={() => openReport(unit.frontId)}>
               Field report
             </button>
+            {front && <ShipButtons front={front} online={online} />}
             {QUICK_ORDERS.map((o) => (
               <button key={o} disabled={!online} onClick={() => send({ type: "unit.order", unitId: unit.id, text: o })}>
                 {o}
@@ -119,6 +168,7 @@ export function Panel() {
         )}
         {!unit && front && (
           <>
+            <ShipButtons front={front} online={online} />
             {unitsOnFront(war, front.id).map((u) => (
               <button key={u.id} className={`unitchip ${u.status}`} onClick={() => selectUnit(u.id)}>
                 {u.name}

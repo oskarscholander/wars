@@ -4,6 +4,7 @@ import type { Diffs } from "./diffs.ts";
 import type { Discovery } from "./discovery.ts";
 import { createWorktree, WorktreeError } from "./git/createWorktree.ts";
 import type { Store } from "./store.ts";
+import { ShippingError, type Shipping } from "./shipping/shipping.ts";
 import { UnitError, type UnitManager } from "./units/manager.ts";
 import type { PermissionQueue } from "./units/permissions.ts";
 
@@ -14,22 +15,17 @@ export interface Deps {
   units: UnitManager;
   permissions: PermissionQueue;
   diffs: Diffs;
+  shipping: Shipping;
 }
 
 /** Thrown for failures the user should see verbatim. */
 export class CommandError extends Error {}
 
-const MILESTONE: Partial<Record<ClientCommand["type"], number>> = {
-  "tests.run": 6,
-  "pr.open": 6,
-  "pr.merge": 6,
-};
-
 export async function handleCommand(cmd: ClientCommand, deps: Deps): Promise<void> {
   try {
     await dispatch(cmd, deps);
   } catch (err) {
-    if (err instanceof UnitError) throw new CommandError(err.message);
+    if (err instanceof UnitError || err instanceof ShippingError) throw new CommandError(err.message);
     throw err;
   }
 }
@@ -55,12 +51,19 @@ async function dispatch(cmd: ClientCommand, deps: Deps): Promise<void> {
       if (!deps.store.state.fronts[cmd.frontId]) throw new CommandError("That front no longer exists");
       await deps.diffs.refresh(cmd.frontId);
       return;
+    case "tests.run":
+      await deps.shipping.runTests(cmd.frontId);
+      return;
+    case "pr.open":
+      await deps.shipping.openPr(cmd.frontId);
+      return;
+    case "pr.merge":
+      await deps.shipping.mergePr(cmd.frontId);
+      return;
     case "permission.resolve":
       if (!deps.permissions.resolve(cmd.id, cmd.allow, cmd.message)) {
         throw new CommandError("That request was already answered");
       }
       return;
-    default:
-      throw new CommandError(`${cmd.type} is not implemented yet (milestone ${MILESTONE[cmd.type] ?? "?"})`);
   }
 }

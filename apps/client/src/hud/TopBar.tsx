@@ -14,6 +14,7 @@ function frontSubtitle(war: WarState, f: Front): { text: string; tone?: "alert" 
   const parts = [units ? `${units} unit${units > 1 ? "s" : ""}` : "No units"];
   if (f.pr?.state === "open") parts.push(`PR #${f.pr.number}`);
   if (f.tests.status === "failed") parts.push("tests failing");
+  if (f.tests.status === "running") parts.push("testing…");
   return { text: parts.join(" · ") };
 }
 

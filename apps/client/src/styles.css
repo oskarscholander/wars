@@ -378,6 +378,15 @@ canvas {
   background: var(--chip);
   color: var(--chip-ink);
 }
+.hints .gold {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: #26241c;
+  font-weight: 600;
+}
+.stats .add {
+  color: var(--ok);
+}
 .hints .unitchip {
   font-weight: 600;
 }

@@ -12,6 +12,7 @@ import { buildServer } from "./server.ts";
 import { Store } from "./store.ts";
 import { Db } from "./db.ts";
 import { Diffs } from "./diffs.ts";
+import { Shipping } from "./shipping/shipping.ts";
 import { worktreeDiff } from "./git/diff.ts";
 import { writeFile } from "node:fs/promises";
 import { UnitManager } from "./units/manager.ts";
@@ -71,7 +72,7 @@ describe("daemon over WebSocket", () => {
       queryFn: () => (async function* () {})(),
       changedFiles: async () => 0,
     });
-    const app = await buildServer({ config, store, discovery, units, permissions, diffs: new Diffs(store, repo), token: "secret" });
+    const app = await buildServer({ config, store, discovery, units, permissions, diffs: new Diffs(store, repo), shipping: new Shipping({ store, testCommand: ["true"] }), token: "secret" });
     await app.listen({ host: "127.0.0.1", port: 0 });
     const { port } = app.server.address() as { port: number };
 

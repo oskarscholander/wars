@@ -22,6 +22,8 @@ export function Bubble() {
   const pending = pendingFor(war, unit.id)[0];
   const working = unit.status === "working";
   const diff = war.diffs[unit.frontId];
+  const pr = war.fronts[unit.frontId]?.pr;
+  const canMerge = !working && !pending && pr?.state === "open";
   const showReport =
     !working && !pending && !!diff?.length && approved[unit.frontId] !== diffSignature(war, unit.frontId);
 
@@ -40,11 +42,18 @@ export function Bubble() {
               </span>
             )}
           </div>
-          {showReport && (
+          {(showReport || canMerge) && (
             <div className="acts">
-              <button className="btn plain" onClick={() => openReport(unit.frontId)}>
-                Open report
-              </button>
+              {showReport && (
+                <button className="btn plain" onClick={() => openReport(unit.frontId)}>
+                  Open report
+                </button>
+              )}
+              {canMerge && (
+                <button className="btn gold" onClick={() => send({ type: "pr.merge", frontId: unit.frontId })}>
+                  Merge PR #{pr!.number}
+                </button>
+              )}
             </div>
           )}
           {pending && (

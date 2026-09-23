@@ -136,3 +136,44 @@ Screenshots at 1280×800 and 390×844 compared against the prototype: organic
 islands with roads, trees and rocks side by side (stacked on portrait). A working
 Haiku scout showed its yellow beacon and tracer smoke. With emulated
 `prefers-reduced-motion` the page rendered with no errors.
+
+## Milestone 6: Shipping (2026-09-23)
+
+**What works**
+
+- `tests.run` runs the configured `testCommand` (an argument array) in the
+  worktree, with a 15-minute timeout. Pass/fail counts are parsed from vitest,
+  jest, pytest, mocha and node:test summaries. A non-zero exit with no summary
+  counts as one failure. The front goes `running`, then `passed` or `failed`,
+  and results are saved to SQLite so bunkers survive a daemon restart.
+- `pr.open` is refused while tests fail ("A failing-test bunker blocks the
+  road") or are still running. Otherwise it runs `git push -u origin <branch>`
+  then `gh pr create --fill --head <branch>`, emits `pr.opened`, and raises the
+  gold flag. Units reach the flag. If a PR already exists for the branch, it's
+  adopted.
+- `pr.merge` runs `gh pr merge <n> --squash` and emits `pr.merged`. The flag
+  turns team colour and the chip says "Won".
+- PR state is polled every 30 s (and on start) with
+  `gh pr view <branch> --json number,state,url`. Network or auth errors keep
+  the last known state. If `gh` isn't installed, polling turns itself off once.
+- UI: Run tests, Open PR (disabled behind a bunker) and Merge PR buttons in the
+  panel, a Merge PR button in the bubble, test status and counts in the panel
+  header (the output tail shows on hover), "testing…" in the top bar, and toasts
+  for test results, a newly open PR and a won front.
+
+**Demo (acceptance)**
+
+The scratch repo got a local bare `origin`. A small fake `gh` script on the
+daemon's PATH stood in for GitHub, since this sandbox has no `gh`. The test
+command failed whenever a `FAIL` file existed in the worktree.
+
+- With `FAIL` present, Run tests gave "3 passed, 1 failed. Bunker on
+  fix/assignment-grading". The bunker rose on the road and Open PR was disabled.
+- After removing `FAIL`, Run tests gave "4 passed, 0 failed. Road clear" and
+  the bunker sank.
+- Open PR pushed `fix/assignment-grading` to origin and opened PR #101. The flag
+  turned gold and Scout 2 drove up to it.
+- Merge PR from the bubble gave "Front won". The flag took the team colour and
+  the chip read "Won".
+- After a daemon restart, feat/tiptap-comments still showed its failing
+  bunker (restored from SQLite), and polling found an external PR #7 on it.
