@@ -1,13 +1,31 @@
 import { randomUUID } from "node:crypto";
-import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { Front, PermissionMode, Unit, UnitModel } from "@ww/shared";
+import type { Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { Front, ImageAttachment, PermissionMode, Unit, UnitModel } from "@ww/shared";
 import type { Db } from "../db.ts";
 import type { Store } from "../store.ts";
 import { TurnMapper, type Effect } from "./mapMessage.ts";
 import type { PermissionQueue } from "./permissions.ts";
 import type { UnitLog } from "./log.ts";
 
-export type QueryFn = (params: { prompt: string; options: Options }) => AsyncIterable<SDKMessage>;
+export type QueryFn = (params: { prompt: string | AsyncIterable<SDKUserMessage>; options: Options }) => AsyncIterable<SDKMessage>;
+
+interface Order {
+  text: string;
+  images?: ImageAttachment[];
+}
+
+/** A plain string when there are no images (keeps the common path simple); a one-shot
+ * async generator of a single content-block user message when there are. */
+function buildPrompt(order: Order): string | AsyncIterable<SDKUserMessage> {
+  if (!order.images || order.images.length === 0) return order.text;
+  const content: SDKUserMessage["message"]["content"] = [
+    ...order.images.map((img) => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mediaType, data: img.data } })),
+    ...(order.text ? [{ type: "text" as const, text: order.text }] : []),
+  ];
+  return (async function* () {
+    yield { type: "user", message: { role: "user", content }, parent_tool_use_id: null } satisfies SDKUserMessage;
+  })();
+}
 
 export interface UnitManagerDeps {
   store: Store;
@@ -39,7 +57,7 @@ const bubbleBrief = (front: Front) =>
  */
 export class UnitManager {
   #deps: UnitManagerDeps;
-  #queues = new Map<string, string[]>();
+  #queues = new Map<string, Order[]>();
   #running = new Set<string>();
   #aborts = new Map<string, AbortController>();
   #loadedFronts = new Set<string>();
@@ -86,11 +104,11 @@ export class UnitManager {
     return unit;
   }
 
-  order(unitId: string, text: string): void {
+  order(unitId: string, text: string, images?: ImageAttachment[]): void {
     if (!this.#deps.store.state.units[unitId]) throw new UnitError("That unit no longer exists");
-    this.#deps.transcript?.add(unitId, "order", text);
+    this.#deps.transcript?.add(unitId, "order", text, { ...(images?.length ? { images } : {}) });
     const queue = this.#queues.get(unitId) ?? [];
-    queue.push(text);
+    queue.push({ text, ...(images?.length ? { images } : {}) });
     this.#queues.set(unitId, queue);
     if (this.#running.has(unitId)) {
       this.#patch(unitId, { queuedOrders: queue.length });
@@ -103,6 +121,18 @@ export class UnitManager {
   setPermissionMode(unitId: string, permissionMode: PermissionMode): void {
     if (!this.#deps.store.state.units[unitId]) throw new UnitError("That unit no longer exists");
     this.#patch(unitId, { permissionMode, activePermissionMode: null });
+  }
+
+  /** Dismisses a unit: stops its work and removes it. */
+  dismiss(unitId: string): void {
+    const { store, db } = this.#deps;
+    const unit = store.state.units[unitId];
+    if (!unit) throw new UnitError("That unit no longer exists");
+    this.#queues.delete(unitId);
+    this.#aborts.get(unitId)?.abort();
+    this.#deps.permissions.cancelUnit(unitId);
+    db.deleteUnit(unitId);
+    store.emit({ type: "unit.removed", unitId });
   }
 
   /** Stops a front's units before its worktree is deleted: aborts queries, drops queued orders. */
@@ -136,12 +166,12 @@ export class UnitManager {
     let ok = true;
     try {
       const queue = this.#queues.get(unitId) ?? [];
-      let text: string | undefined;
-      while ((text = queue.shift()) !== undefined) {
+      let order: Order | undefined;
+      while ((order = queue.shift()) !== undefined) {
         if (!store.state.units[unitId]) break;
         // A fresh order clears the bubble so the last turn's reply doesn't linger beside "working".
         this.#patch(unitId, { queuedOrders: queue.length, status: "working", replyId: null, reply: "" });
-        ok = await this.#turn(unitId, text);
+        ok = await this.#turn(unitId, order);
       }
     } finally {
       this.#running.delete(unitId);
@@ -151,7 +181,7 @@ export class UnitManager {
   }
 
   /** Runs one order to completion. Returns whether it succeeded. */
-  async #turn(unitId: string, text: string, retried = false): Promise<boolean> {
+  async #turn(unitId: string, order: Order, retried = false): Promise<boolean> {
     const { store, permissions, queryFn, anthropicApiKey } = this.#deps;
     const unit = store.state.units[unitId];
     const front = unit && store.state.fronts[unit.frontId];
@@ -165,7 +195,7 @@ export class UnitManager {
 
     try {
       const q = queryFn({
-        prompt: text,
+        prompt: buildPrompt(order),
         options: {
           cwd: front.path,
           model: unit.model,
@@ -194,7 +224,7 @@ export class UnitManager {
       // A session id from another machine or a wiped ~/.claude: start fresh once.
       if (!retried && unit.sessionId && /no conversation found|session.*not found/i.test(message)) {
         this.#patch(unitId, { sessionId: null });
-        return this.#turn(unitId, text, true);
+        return this.#turn(unitId, order, true);
       }
       this.#deps.log?.(`unit ${unitId} query failed: ${message}`);
       result = { kind: "result", ok: false, costUsd: 0, inputTokens: 0, outputTokens: 0, errorText: message };

@@ -110,8 +110,11 @@ async function dispatch(cmd: ClientCommand, deps: Deps): Promise<ServerEvent | v
     case "unit.update":
       deps.units.setPermissionMode(cmd.unitId, cmd.permissionMode);
       return;
+    case "unit.dismiss":
+      deps.units.dismiss(cmd.unitId);
+      return;
     case "unit.order":
-      deps.units.order(cmd.unitId, cmd.text);
+      deps.units.order(cmd.unitId, cmd.text, cmd.images);
       return;
     case "diff.request":
       if (!deps.store.state.fronts[cmd.frontId]) throw new CommandError("That front no longer exists");

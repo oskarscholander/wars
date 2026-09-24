@@ -14,6 +14,7 @@
   --display: "Saira Condensed", "Arial Narrow", system-ui, sans-serif;
   --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --tab: "Roboto", system-ui, -apple-system, "Segoe UI", sans-serif;
   box-sizing: border-box;
 }
 @media (prefers-color-scheme: dark) {
@@ -82,12 +83,13 @@ body.panning canvas:active {
 .top {
   position: fixed;
   left: 0;
-  right: 0;
   top: 0;
+  max-height: calc(100vh - 16px - env(safe-area-inset-top, 0px));
   padding: calc(8px + env(safe-area-inset-top, 0px)) 8px 8px;
   display: flex;
-  gap: 6px;
-  overflow-x: auto;
+  flex-direction: column;
+  gap: 3px;
+  overflow-y: auto;
   scrollbar-width: none;
   z-index: 5;
   pointer-events: none;
@@ -95,30 +97,43 @@ body.panning canvas:active {
 .top button {
   pointer-events: auto;
   flex: 0 0 auto;
+  width: 168px;
   border: 2px solid transparent;
-  border-radius: 6px;
+  border-radius: 5px;
   background: var(--chip);
   color: var(--chip-ink);
-  padding: 5px 10px;
+  padding: 3px 8px;
   text-align: left;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
+  font-family: var(--tab);
+  cursor: pointer;
+  transition: background-color 120ms, border-color 120ms;
+}
+.top button:not(:disabled):hover {
+  background: color-mix(in srgb, var(--chip) 80%, var(--brass));
+  border-color: color-mix(in srgb, transparent 40%, var(--brass));
+}
+.top .repos-chip:not(:disabled):hover {
+  background: color-mix(in srgb, var(--brass) 85%, white);
 }
 .top button[aria-pressed="true"] {
   border-color: var(--brass);
 }
 .top b {
-  font-family: var(--display);
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: 0.02em;
+  font-weight: 500;
+  font-size: 13px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .top small {
-  font-size: 12px;
+  font-size: 11px;
   opacity: 0.8;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .top .alert {
   color: #ffb4a5;
@@ -305,7 +320,7 @@ body.panning canvas:active {
 
 .panel {
   position: fixed;
-  left: var(--ww-left, 0px);
+  left: calc(var(--ww-bar, 0px) + var(--ww-left, 0px));
   right: 0;
   bottom: 0;
   z-index: 6;
@@ -756,8 +771,8 @@ body.panning canvas:active {
 
 .terminals {
   position: fixed;
-  left: 0;
-  top: calc(64px + env(safe-area-inset-top, 0px));
+  left: var(--ww-bar, 0px);
+  top: env(safe-area-inset-top, 0px);
   bottom: 0;
   z-index: 6;
   display: flex;
@@ -937,13 +952,19 @@ body.panning canvas:active {
   display: flex;
   gap: 6px;
 }
+.t-composer {
+  border-top: 1px solid #232a24;
+  background: #0d100e;
+}
+.t-composer.dragover {
+  outline: 2px dashed var(--brass);
+  outline-offset: -2px;
+}
 .t-input {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  border-top: 1px solid #232a24;
-  background: #0d100e;
 }
 .t-input input {
   flex: 1;
@@ -958,8 +979,116 @@ body.panning canvas:active {
 .t-input input:focus {
   outline: none;
 }
+.t-attach {
+  flex: 0 0 auto;
+  border: 1px solid #39413a;
+  border-radius: 6px;
+  background: transparent;
+  color: #cfc8b0;
+  font-size: 14px;
+  line-height: 1;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+.t-attach:hover:not(:disabled),
+.t-attach:focus-visible {
+  border-color: var(--brass);
+  color: #efe8cf;
+}
+.t-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px 0;
+}
+.t-order .t-thumbs {
+  padding: 4px 0 0;
+}
+.t-thumb {
+  position: relative;
+  display: block;
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #39413a;
+}
+.t-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.t-thumb button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  line-height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 0 0 0 6px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+.t-attach-error {
+  padding: 4px 10px 0;
+  color: #ff8f7a;
+  font-family: var(--sans);
+  font-size: 11.5px;
+}
 .terminal:focus-within {
   border-color: var(--brass);
+}
+.t-full,
+.t-dismiss {
+  border: 1px solid #39413a;
+  border-radius: 6px;
+  background: transparent;
+  color: #cfc8b0;
+  font-size: 14px;
+  line-height: 1;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+.t-full:hover,
+.t-full:focus-visible,
+.t-dismiss:hover,
+.t-dismiss:focus-visible {
+  border-color: var(--brass);
+  color: #efe8cf;
+}
+/* Fullscreen: the terminal lifts out of the column with a margin of the world around it. */
+.terminal.full {
+  position: fixed;
+  inset: calc(24px + env(safe-area-inset-top, 0px)) 24px calc(24px + env(safe-area-inset-bottom, 0px));
+  z-index: 21;
+  min-height: 0;
+  border-radius: 14px;
+  font-size: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+.terminal.full .t-body {
+  padding: 16px 20px;
+}
+.terminal.full .t-input,
+.terminal.full .t-thumbs,
+.terminal.full .t-attach-error {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+.terminals.has-full {
+  z-index: 20;
+}
+.terminal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(8, 12, 10, 0.55);
+  backdrop-filter: blur(2px);
 }
 .terminal-sheet {
   height: 86%;
@@ -976,7 +1105,7 @@ body.panning canvas:active {
 .toast {
   position: fixed;
   left: 50%;
-  top: calc(64px + env(safe-area-inset-top, 0px));
+  top: calc(8px + env(safe-area-inset-top, 0px));
   transform: translateX(-50%);
   max-width: calc(100vw - 32px);
   background: var(--brass);

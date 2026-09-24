@@ -1,4 +1,4 @@
-import type { DiffFile, Front, LogEntry, PermissionMode, PermissionRequest, Repo, RepoSuggestion, TestsState, Unit, UnitModel, UnitStatus, WarState } from "./types.ts";
+import type { DiffFile, Front, ImageAttachment, LogEntry, PermissionMode, PermissionRequest, Repo, RepoSuggestion, TestsState, Unit, UnitModel, UnitStatus, WarState } from "./types.ts";
 
 /** Daemon → client. Every message is `{ type, ...payload }`. */
 export type ServerEvent =
@@ -45,8 +45,9 @@ export type ClientCommand =
   /** Removes the worktree. `force` also discards uncommitted changes; `deleteBranch` safely deletes a merged branch. */
   | { type: "front.delete"; frontId: string; force?: boolean; deleteBranch?: boolean }
   | { type: "unit.create"; frontId: string; model: UnitModel; name: string; permissionMode?: PermissionMode }
-  | { type: "unit.order"; unitId: string; text: string }
+  | { type: "unit.order"; unitId: string; text: string; images?: ImageAttachment[] }
   | { type: "unit.update"; unitId: string; permissionMode: PermissionMode }
+  | { type: "unit.dismiss"; unitId: string }
   | { type: "unit.history"; unitId: string }
   | { type: "permission.resolve"; id: string; allow: boolean; message?: string }
   | { type: "diff.request"; frontId: string }
